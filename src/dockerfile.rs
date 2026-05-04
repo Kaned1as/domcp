@@ -33,7 +33,7 @@ impl Runner {
         }
     }
 
-    /// Environment variables to prevent tools from writing to /work.
+    /// Environment variables to redirect tool caches to /tmp.
     fn env_vars(self) -> &'static str {
         match self {
             Self::Uvx => concat!(
@@ -73,7 +73,6 @@ impl Runner {
 /// - Use a minimal base image
 /// - Install only the required runner
 /// - Pre-install the MCP server package for faster start
-/// - Set /work as the working directory
 /// - Run as non-root when possible
 pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>) -> Result<String> {
     debug!("Generating Dockerfile for {:?} with command: {:?}", runner, command);
@@ -103,12 +102,11 @@ LABEL org.opencontainers.image.source="domcp"
 {install}
 # Pre-install the MCP server package for faster startup
 {preinstall}
-# Ensure tool caches don't write to /work
+# Redirect tool caches to /tmp
 {env_vars}
-# Set up working directory and writable temp areas
-RUN mkdir -p /work /tmp/home /tmp/.cache /tmp/.local /tmp/.npm && \
+# Writable temp areas
+RUN mkdir -p /tmp/home /tmp/.cache /tmp/.local /tmp/.npm && \
     chmod -R 777 /tmp/home /tmp/.cache /tmp/.local /tmp/.npm
-WORKDIR /work
 
 {expose}
 {entrypoint}
@@ -193,12 +191,12 @@ mod tests {
             "npx".into(),
             "-y".into(),
             "@modelcontextprotocol/server-filesystem".into(),
-            "/work".into(),
+            "/home/user/project".into(),
         ];
         let df = generate(Runner::Npx, &cmd, None).unwrap();
         assert!(df.contains("FROM node:22-slim"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
-        assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/work\"]"));
+        assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/home/user/project\"]"));
     }
 
     #[test]

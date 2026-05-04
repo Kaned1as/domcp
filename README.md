@@ -20,7 +20,7 @@ The container engine is auto-detected, preferring podman over docker.
 ## Options
 
     -e, --engine <ENGINE>        Container engine (default: auto-detect)
-    -w, --workdir <DIR>          Mount DIR as /work (default: $PWD)
+    -w, --workdir <DIR>          Working directory to mount (default: $PWD)
     -m, --extra-mount <SRC:DST>  Additional bind mount (repeatable)
         --env <KEY=VALUE>        Pass environment variable (repeatable)
         --network <MODE>         Network mode (default: none)
@@ -42,7 +42,7 @@ Requires podman(1) or docker(1).
 Stdio server:
 
     domcp -- uvx mcp-server-fetch
-    domcp -- npx -y @modelcontextprotocol/server-filesystem /work
+    domcp -- npx -y @modelcontextprotocol/server-filesystem .
     domcp -- pipx run mcp-server-time
 
 HTTP/SSE server (transport and port detected automatically):
@@ -56,7 +56,7 @@ Allow network access:
 
 Mount additional directories:
 
-    domcp -m /data:/data -- uvx mcp-server-filesystem /work /data
+    domcp -m /data:/data -- uvx mcp-server-filesystem . /data
 
 Use docker instead of podman:
 
@@ -80,7 +80,7 @@ Example `claude_desktop_config.json`:
     "filesystem": {
       "command": "domcp",
       "args": ["--", "npx", "-y",
-        "@modelcontextprotocol/server-filesystem", "/work"]
+        "@modelcontextprotocol/server-filesystem", "."]
     },
     "sse-server": {
       "url": "http://localhost:8080/sse",
@@ -111,23 +111,11 @@ In HTTP mode domcp automatically:
 - appends `--host 0.0.0.0` to the server command
 - adds `EXPOSE` to the Dockerfile
 
-## Path Rewriting
-
-Host paths in command arguments that fall under the mounted working
-directory (or extra mounts) are rewritten to their container
-equivalents:
-
-    domcp -- uvx mcp-server-fs /home/user/project
-    # becomes: uvx mcp-server-fs /work
-
-    domcp -m /data:/mnt/data -- uvx mcp-server-fs /data/files
-    # becomes: uvx mcp-server-fs /mnt/data/files
-
 ## Security
 
 Default isolation:
 
-- Only `$PWD` is mounted (as `/work`)
+- Only `$PWD` is mounted (at the same path inside the container)
 - Network disabled (`--network none`)
 - Runs as host UID:GID (podman `--userns=keep-id`, docker `--user`)
 - No `--privileged`

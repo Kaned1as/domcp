@@ -9,7 +9,7 @@ use std::path::PathBuf;
 ///
 /// Usage:
 ///   domcp -- uvx some-mcp-server --arg1 --arg2
-///   domcp -- npx -y @modelcontextprotocol/server-filesystem /work
+///   domcp -- npx -y @modelcontextprotocol/server-filesystem .
 ///   domcp --extra-mount /data:/data -- uvx mcp-server
 #[derive(Parser, Debug, Clone)]
 #[command(
@@ -23,8 +23,8 @@ pub struct Args {
     #[arg(short = 'e', long, value_name = "ENGINE")]
     pub engine: Option<String>,
 
-    /// Working directory to mount into the container as /work.
-    /// Defaults to the current directory.
+    /// Working directory to mount into the container.
+    /// Mounted at the same path. Defaults to the current directory.
     #[arg(short = 'w', long, value_name = "DIR")]
     pub workdir: Option<PathBuf>,
 

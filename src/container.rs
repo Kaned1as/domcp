@@ -134,19 +134,22 @@ impl Engine {
         // Network isolation
         cmd.args(["--network", &config.network]);
 
-        // Mount working directory
+        // Mount working directory at the same path inside the container
         let workdir = config
             .workdir
             .canonicalize()
             .unwrap_or_else(|_| config.workdir.clone());
-        let mount_arg = format!("{}:/work", workdir.display());
+        let workdir_str = workdir.display().to_string();
+        let mount_arg = format!("{w}:{w}", w = workdir_str);
 
         if self.is_podman {
-            // Podman: use :Z for SELinux relabeling
             cmd.args(["-v", &format!("{mount_arg}:Z")]);
         } else {
             cmd.args(["-v", &mount_arg]);
         }
+
+        // Set container working directory
+        cmd.args(["-w", &workdir_str]);
 
         // Extra mounts
         for m in &config.extra_mounts {
@@ -219,10 +222,10 @@ pub struct RunConfig {
 fn image_tag(command: &[String]) -> String {
     let prefix = command
         .iter()
-        .skip(1)
-        .find(|a| !a.starts_with('-'))
+        .skip(1) // skip command (uvx/npx)
+        .find(|a| !a.starts_with('-')) // skip command-line options (-y/-g)
         .map(|s| {
-            s.strip_prefix('@')
+            s.strip_prefix('@') // remove leading @
                 .unwrap_or(s)
                 .replace(|c: char| !c.is_alphanumeric() && c != '-', "-")
                 .to_lowercase()
