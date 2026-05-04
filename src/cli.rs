@@ -31,7 +31,7 @@ pub struct Args {
     /// Additional directories to mount into the container.
     /// Each path is mounted at the same location inside the container.
     /// Can be specified multiple times.
-    #[arg(short = 'm', long = "extra-mount", value_name = "PATH")]
+    #[arg(short = 'v', long = "extra-mount", value_name = "PATH")]
     pub extra_mounts: Vec<PathBuf>,
 
     /// Additional environment variables to pass into the container.
