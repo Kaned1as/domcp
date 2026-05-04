@@ -61,6 +61,10 @@ pub struct Args {
     #[arg(long)]
     pub no_user_map: bool,
 
+    /// Print the generated Dockerfile and container run command, then exit.
+    #[arg(long)]
+    pub dry_run: bool,
+
     /// The command and arguments to run inside the container.
     /// Everything after `--` is treated as the wrapped command.
     #[arg(trailing_var_arg = true, required = true)]
