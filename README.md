@@ -50,6 +50,7 @@ Example `claude_desktop_config.json`:
         --env <KEY=VALUE>        Extra environment variable (repeatable)
         --no-env                 Don't pass host environment into container
         --network <MODE>         Network mode (default: engine default)
+    -i, --install <PKG>          Extra Alpine package to install (repeatable)
     -p, --port <HOST:CONTAINER>  Port mapping (repeatable; auto-added for HTTP)
         --rebuild                Force image rebuild
         --no-user-map            Don't map host UID/GID into container
@@ -70,6 +71,11 @@ Stdio server:
     domcp -- uvx mcp-server-fetch
     domcp -- npx -y @modelcontextprotocol/server-filesystem .
     domcp -- pipx run mcp-server-time
+
+Install extra tools needed by the MCP server:
+
+    domcp -i git -- uvx git-mcp-server
+    domcp -i openssh -i git -- uvx slepp-ssh-mcp
 
 HTTP/SSE server (transport and port detected automatically):
 

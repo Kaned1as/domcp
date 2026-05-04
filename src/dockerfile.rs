@@ -66,7 +66,7 @@ impl Runner {
 /// - Install only the required runner
 /// - Pre-install the MCP server package for faster start
 /// - Run as non-root when possible
-pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>) -> Result<String> {
+pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>, packages: &[String]) -> Result<String> {
     debug!("Generating Dockerfile for {:?} with command: {:?}", runner, command);
 
     let base = runner.base_image();
@@ -78,6 +78,12 @@ pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>) ->
     let preinstall = build_preinstall(runner, command);
 
     let env_vars = runner.env_vars();
+
+    let extra_packages = if packages.is_empty() {
+        String::new()
+    } else {
+        format!("# Extra packages\nRUN apk add --no-cache {}\n", packages.join(" "))
+    };
 
     let expose = match expose_port {
         Some(port) => format!("EXPOSE {port}"),
@@ -92,6 +98,7 @@ LABEL org.opencontainers.image.source="domcp"
 
 # Install runner
 {install}
+{extra_packages}
 # Pre-install the MCP server package for faster startup
 {preinstall}
 # Redirect tool caches to /tmp
@@ -170,7 +177,7 @@ mod tests {
     #[test]
     fn test_generate_uvx() {
         let cmd = vec!["uvx".into(), "mcp-server-fetch".into()];
-        let df = generate(Runner::Uvx, &cmd, None).unwrap();
+        let df = generate(Runner::Uvx, &cmd, None, &[]).unwrap();
         assert!(df.contains("FROM alpine:latest"));
         assert!(df.contains("apk add --no-cache uv"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
@@ -186,7 +193,7 @@ mod tests {
             "@modelcontextprotocol/server-filesystem".into(),
             "/home/user/project".into(),
         ];
-        let df = generate(Runner::Npx, &cmd, None).unwrap();
+        let df = generate(Runner::Npx, &cmd, None, &[]).unwrap();
         assert!(df.contains("FROM alpine:latest"));
         assert!(df.contains("apk add --no-cache npm"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
@@ -196,8 +203,16 @@ mod tests {
     #[test]
     fn test_generate_with_expose_port() {
         let cmd = vec!["uvx".into(), "mcp-server-sse".into()];
-        let df = generate(Runner::Uvx, &cmd, Some(8080)).unwrap();
+        let df = generate(Runner::Uvx, &cmd, Some(8080), &[]).unwrap();
         assert!(df.contains("EXPOSE 8080"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-sse\"]"));
+    }
+
+    #[test]
+    fn test_generate_with_packages() {
+        let cmd = vec!["uvx".into(), "git-mcp-server".into()];
+        let pkgs = vec!["git".to_string(), "openssh".to_string()];
+        let df = generate(Runner::Uvx, &cmd, None, &pkgs).unwrap();
+        assert!(df.contains("apk add --no-cache git openssh"));
     }
 }

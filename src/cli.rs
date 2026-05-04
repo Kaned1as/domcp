@@ -56,6 +56,11 @@ pub struct Args {
     #[arg(long)]
     pub network: Option<String>,
 
+    /// Additional packages to install in the container (via apk).
+    /// Can be specified multiple times.
+    #[arg(short = 'i', long = "install", value_name = "PKG")]
+    pub packages: Vec<String>,
+
     /// Force rebuild of the container image even if it already exists.
     #[arg(long)]
     pub rebuild: bool,

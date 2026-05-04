@@ -63,7 +63,7 @@ pub fn run(args: Args) -> Result<()> {
         Transport::Http { port } => Some(*port),
         Transport::Stdio => None,
     };
-    let dockerfile_content = dockerfile::generate(runner, &args.command, expose_port)?;
+    let dockerfile_content = dockerfile::generate(runner, &args.command, expose_port, &args.packages)?;
 
     // Dry-run: print the Dockerfile and exit
     if args.dry_run {
