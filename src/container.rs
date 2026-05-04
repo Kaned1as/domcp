@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Result};
 use log::{debug, info};
-use sha2::{Digest, Sha256};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -214,20 +213,10 @@ pub struct RunConfig {
     pub user_map: bool,
 }
 
-/// Generate a deterministic image tag from the command.
+/// Generate an image tag from the command.
 ///
-/// The tag encodes the command so that different MCP servers get different
-/// images, but the same command always reuses its cached image.
+/// Uses the package name as a human-readable prefix with a `latest` tag.
 fn image_tag(command: &[String]) -> String {
-    let mut hasher = Sha256::new();
-    for part in command {
-        hasher.update(part.as_bytes());
-        hasher.update(b"\0");
-    }
-    let hash = hex::encode(hasher.finalize());
-    let short_hash = &hash[..12];
-
-    // Use the first real argument (package name) as a human-readable prefix
     let prefix = command
         .iter()
         .skip(1)
@@ -240,7 +229,7 @@ fn image_tag(command: &[String]) -> String {
         })
         .unwrap_or_else(|| "mcp".to_string());
 
-    format!("domcp/{prefix}:{short_hash}")
+    format!("domcp/{prefix}:latest")
 }
 
 #[cfg(test)]
@@ -248,12 +237,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_image_tag_deterministic() {
+    fn test_image_tag_format() {
         let cmd: Vec<String> = vec!["uvx".into(), "mcp-server-fetch".into()];
-        let tag1 = image_tag(&cmd);
-        let tag2 = image_tag(&cmd);
-        assert_eq!(tag1, tag2);
-        assert!(tag1.starts_with("domcp/mcp-server-fetch:"));
+        assert_eq!(image_tag(&cmd), "domcp/mcp-server-fetch:latest");
     }
 
     #[test]
@@ -270,7 +256,6 @@ mod tests {
             "-y".into(),
             "@modelcontextprotocol/server-filesystem".into(),
         ];
-        let tag = image_tag(&cmd);
-        assert!(tag.starts_with("domcp/modelcontextprotocol-server-filesystem:"));
+        assert_eq!(image_tag(&cmd), "domcp/modelcontextprotocol-server-filesystem:latest");
     }
 }
