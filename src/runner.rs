@@ -249,6 +249,7 @@ const SYSTEM_ENV_VARS: &[&str] = &[
     "DBUS_SESSION_BUS_ADDRESS",
     "DISPLAY",
     "HOME",
+    "LS_COLORS",
     "HOSTNAME",
     "LANG",
     "LANGUAGE",
