@@ -27,10 +27,7 @@ impl Runner {
 
     /// Base Docker image for this runner.
     fn base_image(self) -> &'static str {
-        match self {
-            Self::Uvx | Self::Pipx => "python:3.13-slim",
-            Self::Npx => "node:22-slim",
-        }
+        "alpine:latest"
     }
 
     /// Environment variables to redirect tool caches to /tmp.
@@ -55,14 +52,9 @@ impl Runner {
     /// Shell commands to install the runner itself.
     fn install_commands(self) -> &'static str {
         match self {
-            Self::Uvx => concat!(
-                "RUN pip install --no-cache-dir uv\n",
-            ),
-            Self::Pipx => concat!(
-                "RUN pip install --no-cache-dir pipx && ",
-                "pipx ensurepath\n",
-            ),
-            Self::Npx => "", // npx comes with node
+            Self::Uvx => "RUN apk add --no-cache uv\n",
+            Self::Pipx => "RUN apk add --no-cache pipx\n",
+            Self::Npx => "RUN apk add --no-cache npm\n",
         }
     }
 }
@@ -179,7 +171,8 @@ mod tests {
     fn test_generate_uvx() {
         let cmd = vec!["uvx".into(), "mcp-server-fetch".into()];
         let df = generate(Runner::Uvx, &cmd, None).unwrap();
-        assert!(df.contains("FROM python:3.13-slim"));
+        assert!(df.contains("FROM alpine:latest"));
+        assert!(df.contains("apk add --no-cache uv"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-fetch\"]"));
         assert!(!df.contains("EXPOSE"));
@@ -194,7 +187,8 @@ mod tests {
             "/home/user/project".into(),
         ];
         let df = generate(Runner::Npx, &cmd, None).unwrap();
-        assert!(df.contains("FROM node:22-slim"));
+        assert!(df.contains("FROM alpine:latest"));
+        assert!(df.contains("apk add --no-cache npm"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
         assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/home/user/project\"]"));
     }
