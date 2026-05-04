@@ -160,9 +160,18 @@ impl Engine {
 
         // User mapping for rootless safety
         if config.user_map {
-            let uid = nix::unistd::getuid();
-            let gid = nix::unistd::getgid();
-            cmd.args(["--user", &format!("{uid}:{gid}")]);
+            if self.is_podman {
+                // Podman: --userns=keep-id maps host UID to container UID=0
+                // This is the cleanest rootless approach — the user inside
+                // the container sees themselves as their host UID with proper
+                // file ownership on mounted volumes.
+                cmd.args(["--userns=keep-id"]);
+            } else {
+                // Docker: explicitly set UID:GID
+                let uid = nix::unistd::getuid();
+                let gid = nix::unistd::getgid();
+                cmd.args(["--user", &format!("{uid}:{gid}")]);
+            }
         }
 
         // Port mappings
