@@ -89,5 +89,24 @@ pub fn parse() -> Args {
     if args.no_user_map {
         args.user_map = false;
     }
+    args.extra_mounts = args.extra_mounts.into_iter().map(expand_tilde).collect();
+    if let Some(w) = args.workdir.take() {
+        args.workdir = Some(expand_tilde(w));
+    }
     args
+}
+
+/// Expand a leading `~` to the user's home directory.
+fn expand_tilde(p: PathBuf) -> PathBuf {
+    let s = p.to_string_lossy();
+    if s == "~" {
+        dirs::home_dir().unwrap_or(p)
+    } else if let Some(rest) = s.strip_prefix("~/") {
+        match dirs::home_dir() {
+            Some(home) => home.join(rest),
+            None => p,
+        }
+    } else {
+        p
+    }
 }
