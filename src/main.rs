@@ -3,6 +3,7 @@ mod container;
 mod dockerfile;
 mod proxy;
 mod runner;
+mod signal;
 
 use anyhow::Result;
 use log::info;

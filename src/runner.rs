@@ -48,6 +48,9 @@ pub fn run(args: Args) -> Result<()> {
 
     let child = engine.run_container(&config)?;
 
+    // 7. Set up signal forwarding (Ctrl+C → container SIGTERM)
+    crate::signal::setup_signal_forwarding(child.id());
+
     info!("Container started, proxying stdio...");
 
     // 7. Proxy stdio
