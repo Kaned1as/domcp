@@ -21,7 +21,7 @@ const HOST_FLAGS: &[&str] = &["--host", "--bind", "--listen"];
 const HTTP_TRANSPORT_VALUES: &[&str] = &["sse", "streamable-http", "http"];
 
 /// Default port that MCP HTTP servers tend to use when not specified explicitly.
-const DEFAULT_HTTP_PORT: u16 = 8000;
+const DEFAULT_HTTP_PORT: u16 = 8080;
 
 /// Detect the MCP transport mode from the command arguments and environment
 /// variables that will be passed into the container.

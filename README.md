@@ -97,7 +97,7 @@ Example `claude_desktop_config.json`:
 domcp scans command arguments and `--env` values to choose between
 stdio and HTTP mode. The first matching rule wins:
 
-    --transport sse|streamable-http|http      HTTP (port from --port or 8000)
+    --transport sse|streamable-http|http      HTTP (port from --port or 8080)
     --port <N>                                HTTP on port N
     --transport=<val> / --port=<N>            combined forms, same as above
     MCP_TRANSPORT=sse|http|streamable-http    HTTP via environment
