@@ -2,8 +2,16 @@
 name = "domcp"
 version = "0.1.0"
 edition = "2024"
-description = "Dockerize MCP servers for safer interaction — wraps uvx/npx/pipx commands in containers"
-license = "MIT"
+authors = ["Oleg `Kanedias` Chernovskiy <kanedias@house-of-maker.online>"]
+description = "Dockerize MCP servers for safety: wraps uvx/npx/pipx commands in containers"
+repository = "https://gitlab.com/Kanedias/domcp"
+keywords = ["mcp", "docker", "security", "isolation"]
+categories = ["development-tools"]
+license = "GPL-3.0+"
+readme = "README.md"
+
+[badges]
+gitlab = { repository = "Kanedias/domcp", branch = "master" }
 
 [dependencies]
 clap = { version = "4", features = ["derive"] }

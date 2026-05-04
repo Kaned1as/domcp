@@ -17,6 +17,30 @@ environment variables.
 
 The container engine is auto-detected, preferring podman over docker.
 
+## Client Configuration
+
+Example `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "domcp",
+      "args": ["--network", "host", "--", "uvx", "mcp-server-fetch"]
+    },
+    "filesystem": {
+      "command": "domcp",
+      "args": ["--", "npx", "-y", "@modelcontextprotocol/server-filesystem", "."]
+    },
+    "sse-server": {
+      "url": "http://localhost:8080/sse",
+      "command": "domcp",
+      "args": ["--", "uvx", "mcp-server-sse", "--transport", "sse", "--port", "8080"]
+    }
+  }
+}
+```
+
 ## Options
 
     -e, --engine <ENGINE>        Container engine (default: auto-detect)
@@ -67,32 +91,6 @@ Use docker instead of podman:
 Preview without building:
 
     domcp --dry-run -- uvx mcp-server-fetch
-
-## Client Configuration
-
-Example `claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "fetch": {
-      "command": "domcp",
-      "args": ["--network", "host", "--", "uvx", "mcp-server-fetch"]
-    },
-    "filesystem": {
-      "command": "domcp",
-      "args": ["--", "npx", "-y",
-        "@modelcontextprotocol/server-filesystem", "."]
-    },
-    "sse-server": {
-      "url": "http://localhost:8080/sse",
-      "command": "domcp",
-      "args": ["--", "uvx", "mcp-server-sse",
-        "--transport", "sse", "--port", "8080"]
-    }
-  }
-}
-```
 
 ## Transport Detection
 
