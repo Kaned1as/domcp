@@ -41,8 +41,15 @@ pub struct Args {
 
     /// Additional environment variables to pass into the container.
     /// Format: KEY=VALUE. Can be specified multiple times.
+    /// By default all host environment variables are passed through;
+    /// these are merged on top.
     #[arg(long = "env", value_name = "KEY=VALUE")]
     pub envs: Vec<String>,
+
+    /// Don't pass host environment variables into the container.
+    /// Only variables set with --env will be available.
+    #[arg(long)]
+    pub no_env: bool,
 
     /// Network mode for the container (e.g. "none", "host", "bridge").
     /// If not set, the container engine default is used.

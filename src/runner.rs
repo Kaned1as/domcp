@@ -37,10 +37,20 @@ pub fn run(args: Args) -> Result<()> {
     // 4. Detect transport mode (stdio vs HTTP/SSE)
     let detected_transport = transport::detect(&command, &args.envs);
 
-    // Collect mutable copies of network / ports so we can adjust them for HTTP
+    // Collect mutable copies of network / ports / envs so we can adjust them
     let mut network: Option<String> = args.network.clone();
     let mut ports = args.ports.clone();
-    let mut envs = args.envs.clone();
+
+    // Build environment: host vars (unless --no-env) + explicit --env on top
+    let mut envs: Vec<String> = if args.no_env {
+        Vec::new()
+    } else {
+        std::env::vars()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect()
+    };
+    // Explicit --env values override/append
+    envs.extend(args.envs.clone());
 
     if let Transport::Http { port } = &detected_transport {
         let port = *port;

@@ -23,7 +23,8 @@ The container engine is auto-detected, preferring podman over docker.
     -w, --workdir <DIR>          Working directory to mount (default: $PWD)
         --no-workdir             Don't mount any working directory
     -v, --extra-mount <PATH>     Additional directory to mount (repeatable)
-        --env <KEY=VALUE>        Pass environment variable (repeatable)
+        --env <KEY=VALUE>        Extra environment variable (repeatable)
+        --no-env                 Don't pass host environment into container
         --network <MODE>         Network mode (default: engine default)
     -p, --port <HOST:CONTAINER>  Port mapping (repeatable; auto-added for HTTP)
         --rebuild                Force image rebuild
