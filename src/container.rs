@@ -233,7 +233,9 @@ fn image_tag(command: &[String]) -> String {
         .skip(1)
         .find(|a| !a.starts_with('-'))
         .map(|s| {
-            s.replace(|c: char| !c.is_alphanumeric() && c != '-', "")
+            s.strip_prefix('@')
+                .unwrap_or(s)
+                .replace(|c: char| !c.is_alphanumeric() && c != '-', "-")
                 .to_lowercase()
         })
         .unwrap_or_else(|| "mcp".to_string());
@@ -269,6 +271,6 @@ mod tests {
             "@modelcontextprotocol/server-filesystem".into(),
         ];
         let tag = image_tag(&cmd);
-        assert!(tag.starts_with("domcp/modelcontextprotocolserver-filesystem:"));
+        assert!(tag.starts_with("domcp/modelcontextprotocol-server-filesystem:"));
     }
 }
