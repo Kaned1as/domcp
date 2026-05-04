@@ -46,6 +46,7 @@ pub fn run(args: Args) -> Result<()> {
         Vec::new()
     } else {
         std::env::vars()
+            .filter(|(k, _)| !is_system_env(k))
             .map(|(k, v)| format!("{k}={v}"))
             .collect()
     };
@@ -247,3 +248,74 @@ fn wait_http_container(mut child: std::process::Child) -> Result<i32> {
     Ok(status.code().unwrap_or(1))
 }
 
+/// System-level environment variables that should not be forwarded
+/// into the container (they are set by the container's own OS image).
+const SYSTEM_ENV_VARS: &[&str] = &[
+    "_",
+    "DBUS_SESSION_BUS_ADDRESS",
+    "DISPLAY",
+    "HOME",
+    "HOSTNAME",
+    "LANG",
+    "LANGUAGE",
+    "LC_ALL",
+    "LC_COLLATE",
+    "LC_CTYPE",
+    "LC_MESSAGES",
+    "LC_NUMERIC",
+    "LC_TIME",
+    "LOGNAME",
+    "MAIL",
+    "OLDPWD",
+    "PATH",
+    "PWD",
+    "SHELL",
+    "SHLVL",
+    "TERM",
+    "TERM_PROGRAM",
+    "TERM_PROGRAM_VERSION",
+    "USER",
+    "USERNAME",
+    "WAYLAND_DISPLAY",
+    "WINDOWID",
+    "XAUTHORITY",
+    "XDG_CURRENT_DESKTOP",
+    "XDG_DATA_DIRS",
+    "XDG_MENU_PREFIX",
+    "XDG_RUNTIME_DIR",
+    "XDG_SEAT",
+    "XDG_SESSION_CLASS",
+    "XDG_SESSION_DESKTOP",
+    "XDG_SESSION_ID",
+    "XDG_SESSION_TYPE",
+    "XDG_VTNR",
+];
+
+/// Returns true if the variable name is a system-level env var that
+/// should not be forwarded into the container.
+fn is_system_env(key: &str) -> bool {
+    SYSTEM_ENV_VARS.contains(&key)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_system_env_filtered() {
+        assert!(is_system_env("PATH"));
+        assert!(is_system_env("SHELL"));
+        assert!(is_system_env("HOSTNAME"));
+        assert!(is_system_env("TERM"));
+        assert!(is_system_env("LANG"));
+        assert!(is_system_env("HOME"));
+    }
+
+    #[test]
+    fn test_non_system_env_passed() {
+        assert!(!is_system_env("API_KEY"));
+        assert!(!is_system_env("GITHUB_TOKEN"));
+        assert!(!is_system_env("AWS_ACCESS_KEY_ID"));
+        assert!(!is_system_env("OPENAI_API_KEY"));
+    }
+}
