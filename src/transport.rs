@@ -14,9 +14,6 @@ pub enum Transport {
 /// Well-known flag names that carry a port number as their next argument.
 const PORT_FLAGS: &[&str] = &["--port", "-p"];
 
-/// Well-known flag names that carry a host/bind address as their next argument.
-const HOST_FLAGS: &[&str] = &["--host", "--bind", "--listen"];
-
 /// Well-known transport flag values that indicate HTTP mode.
 const HTTP_TRANSPORT_VALUES: &[&str] = &["sse", "streamable-http", "http"];
 
@@ -185,27 +182,6 @@ fn scan_env_port(envs: &[String]) -> Option<u16> {
     None
 }
 
-/// Rewrite the command to ensure the server binds on 0.0.0.0 inside the
-/// container (required for port-forwarding to work from outside).
-///
-/// If the server already has a `--host` / `--bind` flag we leave it alone.
-/// Otherwise we append `--host 0.0.0.0`.
-pub fn ensure_bind_all(command: &mut Vec<String>) {
-    // Check if there's already a host/bind flag
-    let has_host = command.iter().any(|a| {
-        HOST_FLAGS.contains(&a.as_str())
-            || HOST_FLAGS
-                .iter()
-                .any(|f| a.starts_with(&format!("{f}=")))
-    });
-
-    if !has_host {
-        info!("Appending --host 0.0.0.0 so the server is reachable outside the container");
-        command.push("--host".to_string());
-        command.push("0.0.0.0".to_string());
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -326,39 +302,4 @@ mod tests {
         assert_eq!(detect(&cmd, &[]), Transport::Stdio);
     }
 
-    // --- ensure_bind_all() -------------------------------------------------
-
-    #[test]
-    fn test_ensure_bind_all_appends() {
-        let mut cmd = vec!["uvx".into(), "mcp-server-sse".into()];
-        ensure_bind_all(&mut cmd);
-        assert_eq!(cmd, vec!["uvx", "mcp-server-sse", "--host", "0.0.0.0"]);
-    }
-
-    #[test]
-    fn test_ensure_bind_all_skips_when_present() {
-        let mut cmd = vec![
-            "uvx".into(),
-            "mcp-server-sse".into(),
-            "--host".into(),
-            "127.0.0.1".into(),
-        ];
-        ensure_bind_all(&mut cmd);
-        // Should NOT double-add
-        assert_eq!(
-            cmd,
-            vec!["uvx", "mcp-server-sse", "--host", "127.0.0.1"]
-        );
-    }
-
-    #[test]
-    fn test_ensure_bind_all_skips_combined() {
-        let mut cmd = vec![
-            "uvx".into(),
-            "mcp-server-sse".into(),
-            "--host=0.0.0.0".into(),
-        ];
-        ensure_bind_all(&mut cmd);
-        assert_eq!(cmd, vec!["uvx", "mcp-server-sse", "--host=0.0.0.0"]);
-    }
 }

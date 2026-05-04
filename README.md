@@ -110,7 +110,6 @@ In HTTP mode domcp automatically:
 
 - upgrades `--network none` to `--network bridge` (if explicitly set)
 - adds `-p PORT:PORT`
-- appends `--host 0.0.0.0` to the server command
 - adds `EXPOSE` to the Dockerfile
 
 ## Security

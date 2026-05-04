@@ -31,11 +31,8 @@ pub fn run(args: Args) -> Result<()> {
         Some(w.canonicalize().unwrap_or(w))
     };
 
-    // 3. Copy command (may be mutated for HTTP transport)
-    let mut command = args.command.clone();
-
-    // 4. Detect transport mode (stdio vs HTTP/SSE)
-    let detected_transport = transport::detect(&command, &args.envs);
+    // 3. Detect transport mode (stdio vs HTTP/SSE)
+    let detected_transport = transport::detect(&args.command, &args.envs);
 
     // Collect mutable copies of network / ports / envs so we can adjust them
     let mut network: Option<String> = args.network.clone();
@@ -55,7 +52,7 @@ pub fn run(args: Args) -> Result<()> {
 
     if let Transport::Http { port } = &detected_transport {
         let port = *port;
-        apply_http_transport(&mut command, &mut network, &mut ports, &mut envs, port);
+        apply_http_transport(&mut network, &mut ports, port);
     }
 
     // 5. Detect container engine
@@ -66,7 +63,7 @@ pub fn run(args: Args) -> Result<()> {
         Transport::Http { port } => Some(*port),
         Transport::Stdio => None,
     };
-    let dockerfile_content = dockerfile::generate(runner, &command, expose_port)?;
+    let dockerfile_content = dockerfile::generate(runner, &args.command, expose_port)?;
 
     // Dry-run: print the Dockerfile and exit
     if args.dry_run {
@@ -92,12 +89,12 @@ pub fn run(args: Args) -> Result<()> {
         println!("\n=== Network ===");
         println!("{}", network.as_deref().unwrap_or("(engine default)"));
         println!("\n=== Container command ===");
-        println!("{:?}", command);
+        println!("{:?}", args.command);
         return Ok(());
     }
 
     // 7. Build container image
-    let image_tag = engine.build_image(&dockerfile_content, &command, args.rebuild)?;
+    let image_tag = engine.build_image(&dockerfile_content, &args.command, args.rebuild)?;
 
     match &workdir {
         Some(w) => info!("Mounting workdir: {}", w.display()),
@@ -145,19 +142,13 @@ pub fn run(args: Args) -> Result<()> {
 
 /// Apply adjustments required for HTTP transport mode.
 ///
-/// - Ensures the server binds on 0.0.0.0 (needed for container port forwarding)
 /// - Upgrades network from "none" to "bridge" (ports require network)
 /// - Adds the port mapping if not already present
 fn apply_http_transport(
-    command: &mut Vec<String>,
     network: &mut Option<String>,
     ports: &mut Vec<String>,
-    _envs: &mut Vec<String>,
     port: u16,
 ) {
-    // Make the server bind on all interfaces inside the container
-    transport::ensure_bind_all(command);
-
     // Ports require network — upgrade "none" to "bridge" automatically
     if network.as_deref() == Some("none") {
         info!("Upgrading network from 'none' to 'bridge' (required for port mapping)");
