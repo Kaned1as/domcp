@@ -108,7 +108,7 @@ stdio and HTTP mode. The first matching rule wins:
 
 In HTTP mode domcp automatically:
 
-- upgrades `--network none` to `--network bridge` (if explicitly set)
+- errors if `--network none` is set (incompatible with port mapping)
 - adds `-p PORT:PORT`
 - adds `EXPOSE` to the Dockerfile
 

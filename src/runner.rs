@@ -35,7 +35,7 @@ pub fn run(args: Args) -> Result<()> {
     let detected_transport = transport::detect(&args.command, &args.envs);
 
     // Collect mutable copies of network / ports / envs so we can adjust them
-    let mut network: Option<String> = args.network.clone();
+    let network: Option<String> = args.network.clone();
     let mut ports = args.ports.clone();
 
     // Build environment: host vars (unless --no-env) + explicit --env on top
@@ -52,7 +52,7 @@ pub fn run(args: Args) -> Result<()> {
 
     if let Transport::Http { port } = &detected_transport {
         let port = *port;
-        apply_http_transport(&mut network, &mut ports, port);
+        apply_http_transport(&network, &mut ports, port)?;
     }
 
     // 5. Detect container engine
@@ -142,17 +142,18 @@ pub fn run(args: Args) -> Result<()> {
 
 /// Apply adjustments required for HTTP transport mode.
 ///
-/// - Upgrades network from "none" to "bridge" (ports require network)
+/// - Errors if network is "none" (incompatible with port mapping)
 /// - Adds the port mapping if not already present
 fn apply_http_transport(
-    network: &mut Option<String>,
+    network: &Option<String>,
     ports: &mut Vec<String>,
     port: u16,
-) {
-    // Ports require network — upgrade "none" to "bridge" automatically
+) -> Result<()> {
     if network.as_deref() == Some("none") {
-        info!("Upgrading network from 'none' to 'bridge' (required for port mapping)");
-        *network = Some("bridge".to_string());
+        bail!(
+            "--network none is incompatible with HTTP transport (port {port}).\n\
+             Remove --network none or use --network bridge."
+        );
     }
 
     // Add the port mapping unless the user already supplied one for this port
@@ -167,6 +168,8 @@ fn apply_http_transport(
         info!("Auto-adding port mapping: {}", mapping);
         ports.push(mapping);
     }
+
+    Ok(())
 }
 
 /// Wait for an HTTP-mode container to exit, forwarding only stderr to the host.
