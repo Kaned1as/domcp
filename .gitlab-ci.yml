@@ -1,0 +1,23 @@
+---
+variables:
+  GET_SOURCES_ATTEMPTS: "3"
+  GIT_SUBMODULE_STRATEGY: "recursive"
+
+stages:
+  - build
+
+release x86_64 static:
+  image: docker.io/library/rust:alpine
+  stage: build
+  dependencies: []
+  before_script:
+    - export CARGO_HOME="${PWD}/.cargo_cache"
+  script:
+    - cargo build --release
+  artifacts:
+    paths:
+      - target/release/domcp
+  cache:
+    paths:
+      - .cargo_cache/
+      - target/
