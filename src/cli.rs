@@ -25,8 +25,13 @@ pub struct Args {
 
     /// Working directory to mount into the container.
     /// Mounted at the same path. Defaults to the current directory.
+    /// Use --no-workdir to skip mounting entirely.
     #[arg(short = 'w', long, value_name = "DIR")]
     pub workdir: Option<PathBuf>,
+
+    /// Don't mount any working directory into the container.
+    #[arg(long)]
+    pub no_workdir: bool,
 
     /// Additional directories to mount into the container.
     /// Each path is mounted at the same location inside the container.
@@ -40,9 +45,9 @@ pub struct Args {
     pub envs: Vec<String>,
 
     /// Network mode for the container (e.g. "none", "host", "bridge").
-    /// Defaults to "none" for maximum isolation.
-    #[arg(long, default_value = "none")]
-    pub network: String,
+    /// If not set, the container engine default is used.
+    #[arg(long)]
+    pub network: Option<String>,
 
     /// Force rebuild of the container image even if it already exists.
     #[arg(long)]

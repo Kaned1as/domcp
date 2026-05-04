@@ -21,11 +21,15 @@ pub fn run(args: Args) -> Result<()> {
     info!("Command: {}", args.command.join(" "));
 
     // 2. Determine working directory
-    let workdir = args
-        .workdir
-        .clone()
-        .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
-    let workdir = workdir.canonicalize().unwrap_or(workdir);
+    let workdir = if args.no_workdir {
+        None
+    } else {
+        let w = args
+            .workdir
+            .clone()
+            .unwrap_or_else(|| std::env::current_dir().expect("Failed to get current directory"));
+        Some(w.canonicalize().unwrap_or(w))
+    };
 
     // 3. Copy command (may be mutated for HTTP transport)
     let mut command = args.command.clone();
@@ -34,7 +38,7 @@ pub fn run(args: Args) -> Result<()> {
     let detected_transport = transport::detect(&command, &args.envs);
 
     // Collect mutable copies of network / ports so we can adjust them for HTTP
-    let mut network = args.network.clone();
+    let mut network: Option<String> = args.network.clone();
     let mut ports = args.ports.clone();
     let mut envs = args.envs.clone();
 
@@ -61,7 +65,10 @@ pub fn run(args: Args) -> Result<()> {
         println!("=== Generated Dockerfile ===");
         println!("{}", dockerfile_content);
         println!("=== Workdir ===");
-        println!("{}", workdir.display());
+        match &workdir {
+            Some(w) => println!("{}", w.display()),
+            None => println!("(none)"),
+        }
         for m in &args.extra_mounts {
             println!("Extra mount: {}", m.display());
         }
@@ -72,7 +79,7 @@ pub fn run(args: Args) -> Result<()> {
             }
         }
         println!("\n=== Network ===");
-        println!("{}", network);
+        println!("{}", network.as_deref().unwrap_or("(engine default)"));
         println!("\n=== Container command ===");
         println!("{:?}", command);
         return Ok(());
@@ -81,7 +88,10 @@ pub fn run(args: Args) -> Result<()> {
     // 7. Build container image
     let image_tag = engine.build_image(&dockerfile_content, &command, args.rebuild)?;
 
-    info!("Mounting workdir: {}", workdir.display());
+    match &workdir {
+        Some(w) => info!("Mounting workdir: {}", w.display()),
+        None => info!("No workdir mounted"),
+    }
 
     // 8. Launch container
     let config = RunConfig {
@@ -129,7 +139,7 @@ pub fn run(args: Args) -> Result<()> {
 /// - Adds the port mapping if not already present
 fn apply_http_transport(
     command: &mut Vec<String>,
-    network: &mut String,
+    network: &mut Option<String>,
     ports: &mut Vec<String>,
     _envs: &mut Vec<String>,
     port: u16,
@@ -138,9 +148,9 @@ fn apply_http_transport(
     transport::ensure_bind_all(command);
 
     // Ports require network — upgrade "none" to "bridge" automatically
-    if network == "none" {
+    if network.as_deref() == Some("none") {
         info!("Upgrading network from 'none' to 'bridge' (required for port mapping)");
-        *network = "bridge".to_string();
+        *network = Some("bridge".to_string());
     }
 
     // Add the port mapping unless the user already supplied one for this port

@@ -21,9 +21,10 @@ The container engine is auto-detected, preferring podman over docker.
 
     -e, --engine <ENGINE>        Container engine (default: auto-detect)
     -w, --workdir <DIR>          Working directory to mount (default: $PWD)
+        --no-workdir             Don't mount any working directory
     -v, --extra-mount <PATH>     Additional directory to mount (repeatable)
         --env <KEY=VALUE>        Pass environment variable (repeatable)
-        --network <MODE>         Network mode (default: none)
+        --network <MODE>         Network mode (default: engine default)
     -p, --port <HOST:CONTAINER>  Port mapping (repeatable; auto-added for HTTP)
         --rebuild                Force image rebuild
         --no-user-map            Don't map host UID/GID into container
@@ -106,7 +107,7 @@ stdio and HTTP mode. The first matching rule wins:
 
 In HTTP mode domcp automatically:
 
-- upgrades `--network none` to `--network bridge`
+- upgrades `--network none` to `--network bridge` (if explicitly set)
 - adds `-p PORT:PORT`
 - appends `--host 0.0.0.0` to the server command
 - adds `EXPOSE` to the Dockerfile
@@ -116,7 +117,8 @@ In HTTP mode domcp automatically:
 Default isolation:
 
 - Only `$PWD` is mounted (at the same path inside the container)
-- Network disabled (`--network none`)
+- Use `--no-workdir` if the server needs no filesystem access
+- Network uses engine default (override with `--network none` for full isolation)
 - Runs as host UID:GID (podman `--userns=keep-id`, docker `--user`)
 - No `--privileged`
 - SELinux relabeling (`:Z`) on podman
