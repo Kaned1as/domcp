@@ -63,7 +63,7 @@ pub fn run(args: Args) -> Result<()> {
         println!("=== Workdir ===");
         println!("{}", workdir.display());
         for m in &args.extra_mounts {
-            println!("Extra mount: {}", m);
+            println!("Extra mount: {}", m.display());
         }
         if !ports.is_empty() {
             println!("\n=== Port mappings ===");

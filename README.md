@@ -21,7 +21,7 @@ The container engine is auto-detected, preferring podman over docker.
 
     -e, --engine <ENGINE>        Container engine (default: auto-detect)
     -w, --workdir <DIR>          Working directory to mount (default: $PWD)
-    -m, --extra-mount <SRC:DST>  Additional bind mount (repeatable)
+    -m, --extra-mount <PATH>     Additional directory to mount (repeatable)
         --env <KEY=VALUE>        Pass environment variable (repeatable)
         --network <MODE>         Network mode (default: none)
     -p, --port <HOST:CONTAINER>  Port mapping (repeatable; auto-added for HTTP)
@@ -56,7 +56,7 @@ Allow network access:
 
 Mount additional directories:
 
-    domcp -m /data:/data -- uvx mcp-server-filesystem . /data
+    domcp -m /data -- uvx mcp-server-filesystem . /data
 
 Use docker instead of podman:
 

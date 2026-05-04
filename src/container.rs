@@ -151,12 +151,15 @@ impl Engine {
         // Set container working directory
         cmd.args(["-w", &workdir_str]);
 
-        // Extra mounts
+        // Extra mounts (each path mounted at the same location)
         for m in &config.extra_mounts {
+            let p = m.canonicalize().unwrap_or_else(|_| m.clone());
+            let ps = p.display().to_string();
+            let mount = format!("{ps}:{ps}");
             if self.is_podman {
-                cmd.args(["-v", &format!("{m}:Z")]);
+                cmd.args(["-v", &format!("{mount}:Z")]);
             } else {
-                cmd.args(["-v", m]);
+                cmd.args(["-v", &mount]);
             }
         }
 
@@ -209,7 +212,7 @@ impl Engine {
 pub struct RunConfig {
     pub image: String,
     pub workdir: PathBuf,
-    pub extra_mounts: Vec<String>,
+    pub extra_mounts: Vec<PathBuf>,
     pub envs: Vec<String>,
     pub network: String,
     pub ports: Vec<String>,

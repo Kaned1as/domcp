@@ -10,7 +10,7 @@ use std::path::PathBuf;
 /// Usage:
 ///   domcp -- uvx some-mcp-server --arg1 --arg2
 ///   domcp -- npx -y @modelcontextprotocol/server-filesystem .
-///   domcp --extra-mount /data:/data -- uvx mcp-server
+///   domcp --extra-mount /data -- uvx mcp-server
 #[derive(Parser, Debug, Clone)]
 #[command(
     name = "domcp",
@@ -28,10 +28,11 @@ pub struct Args {
     #[arg(short = 'w', long, value_name = "DIR")]
     pub workdir: Option<PathBuf>,
 
-    /// Additional bind mounts in SOURCE:TARGET format.
+    /// Additional directories to mount into the container.
+    /// Each path is mounted at the same location inside the container.
     /// Can be specified multiple times.
-    #[arg(short = 'm', long = "extra-mount", value_name = "SRC:DST")]
-    pub extra_mounts: Vec<String>,
+    #[arg(short = 'm', long = "extra-mount", value_name = "PATH")]
+    pub extra_mounts: Vec<PathBuf>,
 
     /// Additional environment variables to pass into the container.
     /// Format: KEY=VALUE. Can be specified multiple times.
