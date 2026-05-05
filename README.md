@@ -1,23 +1,35 @@
-# domcp
+domcp
+=====
 
-domcp wraps MCP server commands (`uvx`, `npx`, `pipx`) in a container,
-proxying stdio or exposing HTTP ports transparently. Only the current
-working directory is mounted into the container by default.
+Ever felt scared that AI will rummage through your files and find
+and use API keys or admin accounts you had no desire of allowing to touch?
 
-## Synopsis
+Fear not. `domcp` is a **Docker-for-MCPs**. 
 
-    domcp [OPTIONS] -- <COMMAND>...
+It wraps MCP server commands (`uvx`, `npx`, `pipx`) in a container,
+proxying stdio or exposing HTTP ports transparently. Only the working
+directory is mounted into the container by default, nothing else!
 
-## Description
+Synopsis
+--------
 
-domcp generates a Dockerfile for the given command, builds a container
-image, and runs it with restricted permissions. The MCP transport mode
+```bash
+domcp [OPTIONS] -- <COMMAND>...
+```
+
+Description
+-----------
+
+`domcp` generates a Dockerfile for the given command, builds a container
+image, and runs it with restricted permissions. The docker image is cached
+for subsequent invocations. The MCP transport mode
 (stdio or HTTP/SSE) is detected automatically from command flags and
 environment variables.
 
-The container engine is auto-detected, preferring podman over docker.
+The container engine is auto-detected, supporting `podman` and `docker`.
 
-## Client Configuration
+Client Configuration
+--------------------
 
 Example `claude_desktop_config.json`:
 
@@ -41,7 +53,8 @@ Example `claude_desktop_config.json`:
 }
 ```
 
-## Options
+Options
+-------
 
     -e, --engine <ENGINE>        Container engine (default: auto-detect)
     -w, --workdir <DIR>          Working directory to mount (default: $PWD)
@@ -50,7 +63,7 @@ Example `claude_desktop_config.json`:
         --env <KEY=VALUE>        Extra environment variable (repeatable)
         --no-env                 Don't pass host environment into container
         --network <MODE>         Network mode (default: engine default)
-    -i, --install <PKG>          Extra Alpine package to install (repeatable)
+    -i, --install <PKG>          Extra package to install (repeatable)
     -p, --port <HOST:CONTAINER>  Port mapping (repeatable; auto-added for HTTP)
         --rebuild                Force image rebuild
         --no-user-map            Don't map host UID/GID into container
@@ -58,47 +71,68 @@ Example `claude_desktop_config.json`:
     -h, --help                   Print help
     -V, --version                Print version
 
-## Installation
+Installation
+------------
 
-    cargo install --path .
+I'm currently working on packaging options, they will appear in this section.
 
-Requires podman(1) or docker(1).
+```bash
+cargo install --path .
+```
 
-## Examples
+Requires podman or docker.
+
+Examples
+--------
 
 Stdio server:
 
-    domcp -- uvx mcp-server-fetch
-    domcp -- npx -y @modelcontextprotocol/server-filesystem .
-    domcp -- pipx run mcp-server-time
+```bash
+domcp -- uvx mcp-server-fetch
+domcp -- npx -y @modelcontextprotocol/server-filesystem .
+domcp -- pipx run mcp-server-time
+```
 
-Install extra tools needed by the MCP server:
+Install extra tools needed by the wrapped MCP server:
 
-    domcp -i git -- uvx git-mcp-server
-    domcp -i openssh -i git -- uvx slepp-ssh-mcp
+```bash
+domcp -i git -- uvx git-mcp-server
+domcp -i openssh -- uvx slepp-ssh-mcp
+```
 
 HTTP/SSE server (transport and port detected automatically):
 
-    domcp -- uvx mcp-server-sse --transport sse --port 8080
-    domcp --env MCP_TRANSPORT=sse --env PORT=8080 -- uvx mcp-server-sse
+```bash
+domcp -- uvx mcp-server-sse --transport sse --port 8080
+domcp --env MCP_TRANSPORT=sse --env PORT=8080 -- uvx mcp-server-sse
+```
 
 Allow network access:
 
-    domcp --network host -- uvx mcp-server-fetch
+```bash
+domcp --network host -- uvx mcp-server-fetch
+```
 
 Mount additional directories:
 
-    domcp -v /data -- uvx mcp-server-filesystem . /data
+```bash
+domcp -v /data -- uvx mcp-server-filesystem /data
+```
 
 Use docker instead of podman:
 
-    domcp -e docker -- npx -y @modelcontextprotocol/server-everything
+```bash
+domcp -e docker -- npx -y @modelcontextprotocol/server-everything
+```
 
 Preview without building:
 
-    domcp --dry-run -- uvx mcp-server-fetch
+```bash
+domcp --dry-run -- uvx mcp-server-fetch
+```
 
-## Transport Detection
+Transport Detection
+-------------------
 
 domcp scans command arguments and `--env` values to choose between
 stdio and HTTP mode. The first matching rule wins:
@@ -112,23 +146,36 @@ stdio and HTTP mode. The first matching rule wins:
 
 In HTTP mode domcp automatically:
 
-- errors if `--network none` is set (incompatible with port mapping)
 - adds `-p PORT:PORT`
 - adds `EXPOSE` to the Dockerfile
 
-## Security
+Security
+--------
 
 Default isolation:
 
 - Only `$PWD` is mounted (at the same path inside the container)
 - Use `--no-workdir` if the server needs no filesystem access
-- Network uses engine default (override with `--network none` for full isolation)
-- Runs as host UID:GID (podman `--userns=keep-id`, docker `--user`)
-- No `--privileged`
-- SELinux relabeling (`:Z`) on podman
+- Use `--network none` if the server needs no network access
+- Runs as host UID:GID
+- No `--privileged` flag
 - Images built locally from official base images
 
-## License
+Known issues
+-------------
 
-MIT
+License
+-------------
+
+    Copyright (C) 2026  Oleg `Kanedias` Chernovskiy
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
 
