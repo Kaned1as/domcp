@@ -164,6 +164,11 @@ Default isolation:
 Known issues
 -------------
 
+* On the first run `domcp` needs to generate a Dockerfile, pull the base image,
+  let it install the runtime, then the MCP server inside the container, then run 
+  the container. These steps can take a while on the first run, especially 
+  if the network bandwidth is limited, so set the timeouts appropriately.
+
 License
 -------------
 
