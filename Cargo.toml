@@ -1,6 +1,6 @@
 [package]
 name = "domcp"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Oleg `Kanedias` Chernovskiy <kanedias@house-of-maker.online>"]
 description = "Dockerize MCP servers for safety: wraps uvx/npx/pipx commands in containers"
