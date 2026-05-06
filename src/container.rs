@@ -1,5 +1,9 @@
-use anyhow::{bail, Context, Result};
+use crate::packages;
+use anyhow::{Context, Result, bail};
 use log::{debug, info};
+use serde::Deserialize;
+use serde_json;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 
@@ -63,14 +67,35 @@ impl Engine {
         &self,
         dockerfile_content: &str,
         command: &[String],
+        packages: &[String],
         force_rebuild: bool,
     ) -> Result<String> {
         let tag = image_tag(command);
+        let requested_packages = packages::canonicalize(packages);
 
-        // Check if image already exists
-        if !force_rebuild && self.image_exists(&tag)? {
-            info!("Image `{}` already exists, skipping build", tag);
-            return Ok(tag);
+        if !force_rebuild {
+            match self.image_package_state(&tag)? {
+                ImagePackageState::NotFound => {}
+                ImagePackageState::Present(existing) if existing == requested_packages => {
+                    info!("Image `{}` already exists, skipping build", tag);
+                    return Ok(tag);
+                }
+                ImagePackageState::Missing if requested_packages.is_empty() => {
+                    info!("Image `{}` already exists, skipping build", tag);
+                    return Ok(tag);
+                }
+                ImagePackageState::Present(existing) => {
+                    info!("Image `{}` package list changed; rebuilding", tag);
+                    debug!(
+                        "Existing packages: {:?}, requested: {:?}",
+                        existing, requested_packages
+                    );
+                }
+                ImagePackageState::Missing => {
+                    info!("Image `{}` missing package metadata; rebuilding", tag);
+                    debug!("Requested packages: {:?}", requested_packages);
+                }
+            }
         }
 
         info!("Building container image `{}`...", tag);
@@ -81,8 +106,7 @@ impl Engine {
             .tempfile()
             .context("Failed to create temp Dockerfile")?;
 
-        std::fs::write(tmp.path(), dockerfile_content)
-            .context("Failed to write Dockerfile")?;
+        std::fs::write(tmp.path(), dockerfile_content).context("Failed to write Dockerfile")?;
 
         debug!("Dockerfile at: {}", tmp.path().display());
 
@@ -108,16 +132,40 @@ impl Engine {
         Ok(tag)
     }
 
-    /// Check if an image with the given tag exists locally.
-    fn image_exists(&self, tag: &str) -> Result<bool> {
+    fn image_package_state(&self, tag: &str) -> Result<ImagePackageState> {
         let output = Command::new(&self.path)
             .args(["image", "inspect", tag])
-            .stdout(Stdio::null())
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
             .stderr(Stdio::null())
-            .status()
-            .context("Failed to check image existence")?;
+            .output()
+            .with_context(|| format!("Failed to inspect image `{tag}`"))?;
 
-        Ok(output.success())
+        if !output.status.success() {
+            return Ok(ImagePackageState::NotFound);
+        }
+
+        let records: Vec<InspectRecord> = serde_json::from_slice(&output.stdout)
+            .with_context(|| format!("Failed to parse inspect output for `{tag}`"))?;
+
+        let record = match records.into_iter().next() {
+            Some(record) => record,
+            None => return Ok(ImagePackageState::NotFound),
+        };
+
+        match record.config.labels {
+            Some(labels) => match labels.get(packages::PACKAGES_LABEL_KEY) {
+                Some(value) => match packages::parse_label_value(value) {
+                    Some(parsed) => Ok(ImagePackageState::Present(parsed)),
+                    None => {
+                        debug!("Image `{}` has invalid package metadata: {}", tag, value);
+                        Ok(ImagePackageState::Missing)
+                    }
+                },
+                None => Ok(ImagePackageState::Missing),
+            },
+            None => Ok(ImagePackageState::Missing),
+        }
     }
 
     /// Launch a container and return the child process with stdio connected.
@@ -138,9 +186,7 @@ impl Engine {
 
         // Mount working directory at the same path inside the container
         if let Some(ref workdir) = config.workdir {
-            let workdir = workdir
-                .canonicalize()
-                .unwrap_or_else(|_| workdir.clone());
+            let workdir = workdir.canonicalize().unwrap_or_else(|_| workdir.clone());
             let workdir_str = workdir.display().to_string();
             let mount_arg = format!("{w}:{w}", w = workdir_str);
 
@@ -211,6 +257,25 @@ impl Engine {
     }
 }
 
+#[derive(Debug)]
+enum ImagePackageState {
+    NotFound,
+    Missing,
+    Present(Vec<String>),
+}
+
+#[derive(Debug, Deserialize)]
+struct InspectRecord {
+    #[serde(rename = "Config")]
+    config: InspectConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct InspectConfig {
+    #[serde(rename = "Labels")]
+    labels: Option<HashMap<String, String>>,
+}
+
 /// Configuration for running a container.
 pub struct RunConfig {
     pub image: String,
@@ -265,6 +330,9 @@ mod tests {
             "-y".into(),
             "@modelcontextprotocol/server-filesystem".into(),
         ];
-        assert_eq!(image_tag(&cmd), "domcp/modelcontextprotocol-server-filesystem:latest");
+        assert_eq!(
+            image_tag(&cmd),
+            "domcp/modelcontextprotocol-server-filesystem:latest"
+        );
     }
 }

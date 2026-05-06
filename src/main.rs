@@ -1,6 +1,7 @@
 mod cli;
 mod container;
 mod dockerfile;
+mod packages;
 mod proxy;
 mod runner;
 mod signal;

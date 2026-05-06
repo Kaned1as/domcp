@@ -1,4 +1,4 @@
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use log::info;
 
 use crate::cli::Args;
@@ -63,7 +63,8 @@ pub fn run(args: Args) -> Result<()> {
         Transport::Http { port } => Some(*port),
         Transport::Stdio => None,
     };
-    let dockerfile_content = dockerfile::generate(runner, &args.command, expose_port, &args.packages)?;
+    let dockerfile_content =
+        dockerfile::generate(runner, &args.command, expose_port, &args.packages)?;
 
     // Dry-run: print the Dockerfile and exit
     if args.dry_run {
@@ -94,7 +95,12 @@ pub fn run(args: Args) -> Result<()> {
     }
 
     // 7. Build container image
-    let image_tag = engine.build_image(&dockerfile_content, &args.command, args.rebuild)?;
+    let image_tag = engine.build_image(
+        &dockerfile_content,
+        &args.command,
+        &args.packages,
+        args.rebuild,
+    )?;
 
     match &workdir {
         Some(w) => info!("Mounting workdir: {}", w.display()),

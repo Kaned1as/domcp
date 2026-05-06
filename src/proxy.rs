@@ -51,7 +51,11 @@ impl StdioProxy {
         let stdout_thread = thread::Builder::new()
             .name("stdout-proxy".to_string())
             .spawn(move || {
-                proxy_stream("container→stdout", &mut child_stdout, &mut io::stdout().lock());
+                proxy_stream(
+                    "container→stdout",
+                    &mut child_stdout,
+                    &mut io::stdout().lock(),
+                );
             })
             .context("Failed to spawn stdout proxy thread")?;
 
@@ -59,7 +63,11 @@ impl StdioProxy {
         let stderr_thread = thread::Builder::new()
             .name("stderr-proxy".to_string())
             .spawn(move || {
-                proxy_stream("container→stderr", &mut child_stderr, &mut io::stderr().lock());
+                proxy_stream(
+                    "container→stderr",
+                    &mut child_stderr,
+                    &mut io::stderr().lock(),
+                );
             })
             .context("Failed to spawn stderr proxy thread")?;
 

@@ -1,6 +1,6 @@
-use anyhow::{bail, Result};
+use crate::packages;
+use anyhow::{Result, bail};
 use log::debug;
-
 /// The kind of package runner detected from the command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Runner {
@@ -19,9 +19,7 @@ impl Runner {
             "uvx" => Ok(Self::Uvx),
             "pipx" => Ok(Self::Pipx),
             "npx" => Ok(Self::Npx),
-            other => bail!(
-                "Unsupported runner: `{other}`. domcp supports: uvx, pipx, npx"
-            ),
+            other => bail!("Unsupported runner: `{other}`. domcp supports: uvx, pipx, npx"),
         }
     }
 
@@ -33,19 +31,13 @@ impl Runner {
     /// Environment variables to redirect tool caches to /tmp.
     fn env_vars(self) -> &'static str {
         match self {
-            Self::Uvx => concat!(
-                "ENV UV_CACHE_DIR=/tmp/.cache/uv\n",
-                "ENV HOME=/tmp/home\n",
-            ),
+            Self::Uvx => concat!("ENV UV_CACHE_DIR=/tmp/.cache/uv\n", "ENV HOME=/tmp/home\n",),
             Self::Pipx => concat!(
                 "ENV PIPX_HOME=/tmp/.local/pipx\n",
                 "ENV PIPX_BIN_DIR=/tmp/.local/bin\n",
                 "ENV HOME=/tmp/home\n",
             ),
-            Self::Npx => concat!(
-                "ENV npm_config_cache=/tmp/.npm\n",
-                "ENV HOME=/tmp/home\n",
-            ),
+            Self::Npx => concat!("ENV npm_config_cache=/tmp/.npm\n", "ENV HOME=/tmp/home\n",),
         }
     }
 
@@ -66,8 +58,16 @@ impl Runner {
 /// - Install only the required runner
 /// - Pre-install the MCP server package for faster start
 /// - Run as non-root when possible
-pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>, packages: &[String]) -> Result<String> {
-    debug!("Generating Dockerfile for {:?} with command: {:?}", runner, command);
+pub fn generate(
+    runner: Runner,
+    command: &[String],
+    expose_port: Option<u16>,
+    packages: &[String],
+) -> Result<String> {
+    debug!(
+        "Generating Dockerfile for {:?} with command: {:?}",
+        runner, command
+    );
 
     let base = runner.base_image();
     let install = runner.install_commands();
@@ -78,11 +78,19 @@ pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>, pa
     let preinstall = build_preinstall(runner, command);
 
     let env_vars = runner.env_vars();
-
+    let packages_label_value = packages::label_value(packages);
+    let packages_label = format!(
+        "LABEL {}=\"{}\"",
+        packages::PACKAGES_LABEL_KEY,
+        packages_label_value
+    );
     let extra_packages = if packages.is_empty() {
         String::new()
     } else {
-        format!("# Extra packages\nRUN apk add --no-cache {}\n", packages.join(" "))
+        format!(
+            "# Extra packages\nRUN apk add --no-cache {}\n",
+            packages.join(" ")
+        )
     };
 
     let expose = match expose_port {
@@ -95,6 +103,7 @@ pub fn generate(runner: Runner, command: &[String], expose_port: Option<u16>, pa
 FROM {base}
 
 LABEL org.opencontainers.image.source="domcp"
+{packages_label}
 
 # Install runner
 {install}
@@ -182,6 +191,7 @@ mod tests {
         assert!(df.contains("apk add --no-cache uv"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-fetch\"]"));
+        assert!(df.contains("LABEL domcp.packages=\"\""));
         assert!(!df.contains("EXPOSE"));
     }
 
@@ -198,6 +208,7 @@ mod tests {
         assert!(df.contains("apk add --no-cache npm"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
         assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/home/user/project\"]"));
+        assert!(df.contains("LABEL domcp.packages=\"\""));
     }
 
     #[test]
@@ -214,5 +225,6 @@ mod tests {
         let pkgs = vec!["git".to_string(), "openssh".to_string()];
         let df = generate(Runner::Uvx, &cmd, None, &pkgs).unwrap();
         assert!(df.contains("apk add --no-cache git openssh"));
+        assert!(df.contains("LABEL domcp.packages=\"git,openssh\""));
     }
 }

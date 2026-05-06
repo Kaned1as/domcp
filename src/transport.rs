@@ -6,9 +6,7 @@ pub enum Transport {
     /// JSON-RPC over stdin/stdout (the default for most MCP servers).
     Stdio,
     /// HTTP-based: SSE or Streamable HTTP on a specific port.
-    Http {
-        port: u16,
-    },
+    Http { port: u16 },
 }
 
 /// Well-known flag names that carry a port number as their next argument.
@@ -206,7 +204,12 @@ mod tests {
             "--transport".into(),
             "sse".into(),
         ];
-        assert_eq!(detect(&cmd, &[]), Transport::Http { port: DEFAULT_HTTP_PORT });
+        assert_eq!(
+            detect(&cmd, &[]),
+            Transport::Http {
+                port: DEFAULT_HTTP_PORT
+            }
+        );
     }
 
     #[test]
@@ -247,11 +250,7 @@ mod tests {
 
     #[test]
     fn test_detect_combined_port_flag() {
-        let cmd = vec![
-            "uvx".into(),
-            "mcp-server-http".into(),
-            "--port=4000".into(),
-        ];
+        let cmd = vec!["uvx".into(), "mcp-server-http".into(), "--port=4000".into()];
         assert_eq!(detect(&cmd, &[]), Transport::Http { port: 4000 });
     }
 
@@ -259,7 +258,12 @@ mod tests {
     fn test_detect_env_transport() {
         let cmd = vec!["uvx".into(), "mcp-server-x".into()];
         let envs = vec!["MCP_TRANSPORT=sse".into()];
-        assert_eq!(detect(&cmd, &envs), Transport::Http { port: DEFAULT_HTTP_PORT });
+        assert_eq!(
+            detect(&cmd, &envs),
+            Transport::Http {
+                port: DEFAULT_HTTP_PORT
+            }
+        );
     }
 
     #[test]
@@ -282,10 +286,7 @@ mod tests {
     #[test]
     fn test_detect_ignores_domcp_port_format() {
         // domcp's own -p uses HOST:CONTAINER, which should not confuse detection
-        let cmd = vec![
-            "uvx".into(),
-            "mcp-server-fetch".into(),
-        ];
+        let cmd = vec!["uvx".into(), "mcp-server-fetch".into()];
         // This only appears in Args.ports, not in the command itself
         assert_eq!(detect(&cmd, &[]), Transport::Stdio);
     }
@@ -301,5 +302,4 @@ mod tests {
         // Contains a colon → not a simple port, ignored by scan_port_flag
         assert_eq!(detect(&cmd, &[]), Transport::Stdio);
     }
-
 }
