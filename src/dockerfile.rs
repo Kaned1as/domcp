@@ -44,10 +44,15 @@ impl Runner {
     /// Shell commands to install the runner itself.
     fn install_commands(self) -> &'static str {
         match self {
-            Self::Uvx => "RUN apk add --no-cache uv\n",
-            Self::Pipx => "RUN apk add --no-cache pipx\n",
+            Self::Uvx => "RUN apk add --no-cache python3 uv\n",
+            Self::Pipx => "RUN apk add --no-cache python3 pipx\n",
             Self::Npx => "RUN apk add --no-cache npm\n",
         }
+    }
+
+    /// Common tools needed by packages running inside the container.
+    fn common_install_commands(self) -> &'static str {
+        "RUN apk add --no-cache coreutils\n"
     }
 }
 
@@ -70,7 +75,8 @@ pub fn generate(
     );
 
     let base = runner.base_image();
-    let install = runner.install_commands();
+    let runner_install = runner.install_commands();
+    let common_install = runner.common_install_commands();
     let entrypoint = build_entrypoint(runner, command);
 
     // Try to identify the package name to pre-install it into the image.
@@ -78,11 +84,11 @@ pub fn generate(
     let preinstall = build_preinstall(runner, command);
 
     let env_vars = runner.env_vars();
-    let packages_label_value = packages::label_value(packages);
+    let version_label = env!("CARGO_PKG_VERSION");
     let packages_label = format!(
         "LABEL {}=\"{}\"",
         packages::PACKAGES_LABEL_KEY,
-        packages_label_value
+        packages::label_value(packages)
     );
     let extra_packages = if packages.is_empty() {
         String::new()
@@ -103,10 +109,13 @@ pub fn generate(
 FROM {base}
 
 LABEL org.opencontainers.image.source="domcp"
+LABEL org.opencontainers.image.version="{version_label}"
 {packages_label}
 
 # Install runner
-{install}
+{runner_install}
+# Install common runtime tools
+{common_install}
 {extra_packages}
 # Pre-install the MCP server package for faster startup
 {preinstall}
@@ -189,8 +198,11 @@ mod tests {
         let df = generate(Runner::Uvx, &cmd, None, &[]).unwrap();
         assert!(df.contains("FROM alpine:latest"));
         assert!(df.contains("apk add --no-cache uv"));
+        assert!(df.contains("RUN apk add --no-cache coreutils"));
+        assert!(df.contains("RUN apk add --no-cache python3"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-fetch\"]"));
+        assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));
         assert!(df.contains("LABEL domcp.packages=\"\""));
         assert!(!df.contains("EXPOSE"));
     }
@@ -206,8 +218,11 @@ mod tests {
         let df = generate(Runner::Npx, &cmd, None, &[]).unwrap();
         assert!(df.contains("FROM alpine:latest"));
         assert!(df.contains("apk add --no-cache npm"));
+        assert!(df.contains("RUN apk add --no-cache coreutils"));
+        assert!(!df.contains("RUN apk add --no-cache python3"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
         assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/home/user/project\"]"));
+        assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));
         assert!(df.contains("LABEL domcp.packages=\"\""));
     }
 
@@ -216,6 +231,7 @@ mod tests {
         let cmd = vec!["uvx".into(), "mcp-server-sse".into()];
         let df = generate(Runner::Uvx, &cmd, Some(8080), &[]).unwrap();
         assert!(df.contains("EXPOSE 8080"));
+        assert!(df.contains("RUN apk add --no-cache python3"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-sse\"]"));
     }
 
@@ -225,6 +241,8 @@ mod tests {
         let pkgs = vec!["git".to_string(), "openssh".to_string()];
         let df = generate(Runner::Uvx, &cmd, None, &pkgs).unwrap();
         assert!(df.contains("apk add --no-cache git openssh"));
+        assert!(df.contains("RUN apk add --no-cache python3"));
+        assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));
         assert!(df.contains("LABEL domcp.packages=\"git,openssh\""));
     }
 }

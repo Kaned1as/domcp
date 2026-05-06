@@ -83,6 +83,39 @@ pub struct Args {
     pub command: Vec<String>,
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn consumes_outer_double_dash_separator() {
+        let args = Args::try_parse_from(["domcp", "--dry-run", "--", "uvx", "mcp-server-fetch"])
+            .expect("arguments should parse");
+
+        assert_eq!(args.command, vec!["uvx", "mcp-server-fetch"]);
+    }
+
+    #[test]
+    fn preserves_inner_double_dash_for_wrapped_command() {
+        let args = Args::try_parse_from([
+            "domcp",
+            "--dry-run",
+            "--",
+            "uvx",
+            "mcp-server-fetch",
+            "--",
+            "--help",
+        ])
+        .expect("arguments should parse");
+
+        assert_eq!(
+            args.command,
+            vec!["uvx", "mcp-server-fetch", "--", "--help"]
+        );
+    }
+}
+
 pub fn parse() -> Args {
     let mut args = Args::parse();
     if args.no_user_map {
