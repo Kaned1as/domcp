@@ -20,7 +20,7 @@ use std::path::PathBuf;
 pub struct Args {
     /// Container engine to use (auto-detected if not set).
     /// Checks for podman first, then docker.
-    #[arg(short = 'e', long, value_name = "ENGINE")]
+    #[arg(long, value_name = "ENGINE")]
     pub engine: Option<String>,
 
     /// Working directory to mount into the container.
@@ -39,17 +39,11 @@ pub struct Args {
     #[arg(short = 'v', long = "extra-mount", value_name = "PATH")]
     pub extra_mounts: Vec<PathBuf>,
 
-    /// Additional environment variables to pass into the container.
-    /// Format: KEY=VALUE. Can be specified multiple times.
-    /// By default all host environment variables are passed through;
-    /// these are merged on top.
-    #[arg(long = "env", value_name = "KEY=VALUE")]
-    pub envs: Vec<String>,
-
-    /// Don't pass host environment variables into the container.
-    /// Only variables set with --env will be available.
-    #[arg(long)]
-    pub no_env: bool,
+    /// Host environment variables to expose to the container.
+    /// Accepts literal names or prefixes ending with `*` (e.g. `ATLASSIAN_*`).
+    /// Repeat the flag to allow multiple patterns.
+    #[arg(short = 'e', long = "expose-env", value_name = "PATTERN")]
+    pub expose_env: Vec<String>,
 
     /// Network mode for the container (e.g. "none", "host", "bridge").
     /// If not set, the container engine default is used.

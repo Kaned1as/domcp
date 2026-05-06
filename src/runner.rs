@@ -31,24 +31,18 @@ pub fn run(args: Args) -> Result<()> {
         Some(w.canonicalize().unwrap_or(w))
     };
 
-    // 3. Detect transport mode (stdio vs HTTP/SSE)
-    let detected_transport = transport::detect(&args.command, &args.envs);
+    // 3. Resolve environment variables to pass into the container
+    let envs: Vec<String> = collect_exposed_host_env(&args.expose_env)
+        .into_iter()
+        .map(|(k, v)| format!("{k}={v}"))
+        .collect();
 
-    // Collect mutable copies of network / ports / envs so we can adjust them
+    // 4. Detect transport mode (stdio vs HTTP/SSE)
+    let detected_transport = transport::detect(&args.command, &envs);
+
+    // Collect mutable copies of network / ports so we can adjust them
     let network: Option<String> = args.network.clone();
     let mut ports = args.ports.clone();
-
-    // Build environment: host vars (unless --no-env) + explicit --env on top
-    let mut envs: Vec<String> = if args.no_env {
-        Vec::new()
-    } else {
-        std::env::vars()
-            .filter(|(k, _)| !is_system_env(k))
-            .map(|(k, v)| format!("{k}={v}"))
-            .collect()
-    };
-    // Explicit --env values override/append
-    envs.extend(args.envs.clone());
 
     if let Transport::Http { port } = &detected_transport {
         let port = *port;
@@ -248,54 +242,26 @@ fn wait_http_container(mut child: std::process::Child) -> Result<i32> {
     Ok(status.code().unwrap_or(1))
 }
 
-/// System-level environment variables that should not be forwarded
-/// into the container (they are set by the container's own OS image).
-const SYSTEM_ENV_VARS: &[&str] = &[
-    "_",
-    "DBUS_SESSION_BUS_ADDRESS",
-    "DISPLAY",
-    "HOME",
-    "LS_COLORS",
-    "HOSTNAME",
-    "LANG",
-    "LANGUAGE",
-    "LC_ALL",
-    "LC_COLLATE",
-    "LC_CTYPE",
-    "LC_MESSAGES",
-    "LC_NUMERIC",
-    "LC_TIME",
-    "LOGNAME",
-    "MAIL",
-    "OLDPWD",
-    "PATH",
-    "PWD",
-    "SHELL",
-    "SHLVL",
-    "TERM",
-    "TERM_PROGRAM",
-    "TERM_PROGRAM_VERSION",
-    "USER",
-    "USERNAME",
-    "WAYLAND_DISPLAY",
-    "WINDOWID",
-    "XAUTHORITY",
-    "XDG_CURRENT_DESKTOP",
-    "XDG_DATA_DIRS",
-    "XDG_MENU_PREFIX",
-    "XDG_RUNTIME_DIR",
-    "XDG_SEAT",
-    "XDG_SESSION_CLASS",
-    "XDG_SESSION_DESKTOP",
-    "XDG_SESSION_ID",
-    "XDG_SESSION_TYPE",
-    "XDG_VTNR",
-];
+fn collect_exposed_host_env(patterns: &[String]) -> Vec<(String, String)> {
+    if patterns.is_empty() {
+        return Vec::new();
+    }
 
-/// Returns true if the variable name is a system-level env var that
-/// should not be forwarded into the container.
-fn is_system_env(key: &str) -> bool {
-    SYSTEM_ENV_VARS.contains(&key)
+    std::env::vars()
+        .filter(|(key, _)| {
+            patterns
+                .iter()
+                .any(|pattern| env_pattern_matches(pattern, key))
+        })
+        .collect()
+}
+
+fn env_pattern_matches(pattern: &str, key: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        key.starts_with(prefix)
+    } else {
+        pattern == key
+    }
 }
 
 #[cfg(test)]
@@ -303,20 +269,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_system_env_filtered() {
-        assert!(is_system_env("PATH"));
-        assert!(is_system_env("SHELL"));
-        assert!(is_system_env("HOSTNAME"));
-        assert!(is_system_env("TERM"));
-        assert!(is_system_env("LANG"));
-        assert!(is_system_env("HOME"));
+    fn env_pattern_matches_exact() {
+        assert!(env_pattern_matches("FOO", "FOO"));
+        assert!(!env_pattern_matches("FOO", "FOOBAR"));
     }
 
     #[test]
-    fn test_non_system_env_passed() {
-        assert!(!is_system_env("API_KEY"));
-        assert!(!is_system_env("GITHUB_TOKEN"));
-        assert!(!is_system_env("AWS_ACCESS_KEY_ID"));
-        assert!(!is_system_env("OPENAI_API_KEY"));
+    fn env_pattern_matches_prefix() {
+        assert!(env_pattern_matches("ATLASSIAN_*", "ATLASSIAN_TOKEN"));
+        assert!(!env_pattern_matches("ATLASSIAN_*", "GITHUB_TOKEN"));
+    }
+
+    #[test]
+    fn collect_exposed_host_env_respects_patterns() {
+        let key = "DOMCP_TEST_ENV_COLLECT";
+        let value = "value123";
+        unsafe {
+            std::env::set_var(key, value);
+        }
+
+        let patterns = vec!["DOMCP_TEST_ENV_*".to_string(), key.to_string()];
+        let collected = collect_exposed_host_env(&patterns);
+
+        unsafe {
+            std::env::remove_var(key);
+        }
+
+        let matches: Vec<_> = collected.iter().filter(|(k, _)| k == key).collect();
+        assert_eq!(1, matches.len());
+        assert!(matches.iter().any(|(_, v)| v == value));
+    }
+
+    #[test]
+    fn collect_exposed_host_env_empty_without_patterns() {
+        assert!(collect_exposed_host_env(&[]).is_empty());
     }
 }

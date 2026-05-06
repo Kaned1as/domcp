@@ -8,7 +8,9 @@ Fear not. `domcp` is a **Docker-for-MCPs**.
 
 It wraps MCP server commands (`uvx`, `npx`, `pipx`) in a container,
 proxying stdio or exposing HTTP ports transparently. Only the working
-directory is mounted into the container by default, nothing else!
+directory is mounted into the container by default, nothing else! Host
+environment variables are not forwarded unless you opt in with
+`-e/--expose-env` patterns.
 
 Synopsis
 --------
@@ -23,8 +25,8 @@ Description
 `domcp` generates a Dockerfile for the given command, builds a container
 image, and runs it with restricted permissions. The docker image is cached
 for subsequent invocations. The MCP transport mode
-(stdio or HTTP/SSE) is detected automatically from command flags and
-environment variables.
+The MCP transport mode (stdio or HTTP/SSE) is detected automatically from command flags and any environment variables that domcp will pass into the container.
+
 
 The container engine is auto-detected, supporting `podman` and `docker`.
 
@@ -56,12 +58,11 @@ Example `claude_desktop_config.json`:
 Options
 -------
 
-    -e, --engine <ENGINE>        Container engine (default: auto-detect)
+        --engine <ENGINE>        Container engine (default: auto-detect)
     -w, --workdir <DIR>          Working directory to mount (default: $PWD)
         --no-workdir             Don't mount any working directory
     -v, --extra-mount <PATH>     Additional directory to mount (repeatable)
-        --env <KEY=VALUE>        Extra environment variable (repeatable)
-        --no-env                 Don't pass host environment into container
+    -e, --expose-env <PATTERN>   Expose host env vars matching PATTERN (repeatable; prefixes like `ATLASSIAN_*`)
         --network <MODE>         Network mode (default: engine default)
     -i, --install <PKG>          Extra package to install (repeatable)
     -p, --port <HOST:CONTAINER>  Port mapping (repeatable; auto-added for HTTP)
@@ -104,7 +105,7 @@ HTTP/SSE server (transport and port detected automatically):
 
 ```bash
 domcp -- uvx mcp-server-sse --transport sse --port 8080
-domcp --env MCP_TRANSPORT=sse --env PORT=8080 -- uvx mcp-server-sse
+MCP_TRANSPORT=sse PORT=8080 domcp -e MCP_TRANSPORT -e PORT -- uvx mcp-server-sse
 ```
 
 Allow network access:
@@ -122,7 +123,7 @@ domcp -v /data -- uvx mcp-server-filesystem /data
 Use docker instead of podman:
 
 ```bash
-domcp -e docker -- npx -y @modelcontextprotocol/server-everything
+domcp --engine docker -- npx -y @modelcontextprotocol/server-everything
 ```
 
 Preview without building:
@@ -134,7 +135,7 @@ domcp --dry-run -- uvx mcp-server-fetch
 Transport Detection
 -------------------
 
-domcp scans command arguments and `--env` values to choose between
+domcp scans command arguments and environment values exposed via `-e/--expose-env` to choose between
 stdio and HTTP mode. The first matching rule wins:
 
     --transport sse|streamable-http|http      HTTP (port from --port or 8080)
@@ -155,6 +156,7 @@ Security
 Default isolation:
 
 - Only `$PWD` is mounted (at the same path inside the container)
+- No host environment variables are forwarded unless explicitly exposed
 - Use `--no-workdir` if the server needs no filesystem access
 - Use `--network none` if the server needs no network access
 - Runs as host UID:GID
