@@ -1,5 +1,7 @@
 use anyhow::{Context, Result, bail};
-use log::info;
+use log::{info, warn};
+use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWriteExt};
+use tokio::task::JoinHandle;
 
 use crate::cli::Args;
 use crate::container::{BindMount, Engine, RunConfig};
@@ -8,7 +10,7 @@ use crate::proxy::StdioProxy;
 use crate::transport::{self, Transport};
 
 /// Main orchestration: detect runner → generate Dockerfile → build → run → proxy.
-pub fn run(args: Args) -> Result<()> {
+pub async fn run(args: Args) -> Result<()> {
     // 1. Validate the command
     if args.command.is_empty() {
         bail!("No command provided. Usage: domcp -- uvx <mcp-server> [args...]");
@@ -121,14 +123,15 @@ pub fn run(args: Args) -> Result<()> {
     let child = engine.run_container(&config)?;
 
     // 9. Set up signal forwarding (Ctrl+C → container SIGTERM)
-    crate::signal::setup_signal_forwarding(child.id());
+    let child_pid = child.id().context("Failed to get container process ID")?;
+    crate::signal::setup_signal_forwarding(child_pid);
 
     // 10. Run in the appropriate mode
     match detected_transport {
         Transport::Stdio => {
             info!("Container started, proxying stdio...");
             let proxy = StdioProxy::new(child);
-            let exit_code = proxy.run()?;
+            let exit_code = proxy.run().await?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -136,7 +139,7 @@ pub fn run(args: Args) -> Result<()> {
         Transport::Http { port } => {
             info!("Container started in HTTP mode");
             info!("MCP server available at: http://localhost:{port}");
-            let exit_code = wait_http_container(child)?;
+            let exit_code = wait_http_container(child).await?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -183,69 +186,73 @@ fn apply_http_transport(
 /// In HTTP mode there's no stdin/stdout proxy — the MCP client talks to the
 /// server over HTTP directly. We still forward stderr so error messages and
 /// logs from the server are visible.
-fn wait_http_container(mut child: std::process::Child) -> Result<i32> {
-    use std::io::{self, Read, Write};
-
-    // Forward stderr in a background thread
-    let stderr = child.stderr.take();
-    let stderr_thread = if let Some(mut container_stderr) = stderr {
-        Some(
-            std::thread::Builder::new()
-                .name("http-stderr".to_string())
-                .spawn(move || {
-                    let mut buf = [0u8; 4096];
-                    loop {
-                        match container_stderr.read(&mut buf) {
-                            Ok(0) => break,
-                            Ok(n) => {
-                                let _ = io::stderr().write_all(&buf[..n]);
-                                let _ = io::stderr().flush();
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                })
-                .context("Failed to spawn stderr thread")?,
-        )
-    } else {
-        None
-    };
+async fn wait_http_container(mut child: tokio::process::Child) -> Result<i32> {
+    // Forward stderr in the background
+    let stderr_task = child.stderr.take().map(|mut container_stderr| {
+        tokio::spawn(async move {
+            forward_stream_to_stderr("container→stderr", &mut container_stderr).await;
+        })
+    });
 
     // Also drain stdout (server might print startup messages there)
-    let stdout = child.stdout.take();
-    let stdout_thread = if let Some(mut container_stdout) = stdout {
-        Some(
-            std::thread::Builder::new()
-                .name("http-stdout".to_string())
-                .spawn(move || {
-                    let mut buf = [0u8; 4096];
-                    loop {
-                        match container_stdout.read(&mut buf) {
-                            Ok(0) => break,
-                            Ok(n) => {
-                                let _ = io::stderr().write_all(&buf[..n]);
-                                let _ = io::stderr().flush();
-                            }
-                            Err(_) => break,
-                        }
-                    }
-                })
-                .context("Failed to spawn stdout drain thread")?,
-        )
-    } else {
-        None
-    };
+    let stdout_task = child.stdout.take().map(|mut container_stdout| {
+        tokio::spawn(async move {
+            forward_stream_to_stderr("container→stdout", &mut container_stdout).await;
+        })
+    });
 
-    let status = child.wait().context("Failed to wait for container")?;
+    let status = child.wait().await.context("Failed to wait for container")?;
 
-    if let Some(t) = stderr_thread {
-        let _ = t.join();
+    if let Some(task) = stderr_task {
+        await_task("container→stderr", task).await;
     }
-    if let Some(t) = stdout_thread {
-        let _ = t.join();
+    if let Some(task) = stdout_task {
+        await_task("container→stdout", task).await;
     }
 
     Ok(status.code().unwrap_or(1))
+}
+
+async fn forward_stream_to_stderr<R>(label: &str, reader: &mut R)
+where
+    R: AsyncRead + Unpin,
+{
+    let mut buf = [0u8; 4096];
+    let mut stderr = io::stderr();
+
+    loop {
+        match reader.read(&mut buf).await {
+            Ok(0) => break,
+            Ok(n) => {
+                if let Err(e) = stderr.write_all(&buf[..n]).await {
+                    if e.kind() != io::ErrorKind::BrokenPipe {
+                        warn!("{label}: write error: {e}");
+                    }
+                    break;
+                }
+                if let Err(e) = stderr.flush().await {
+                    if e.kind() != io::ErrorKind::BrokenPipe {
+                        warn!("{label}: flush error: {e}");
+                    }
+                    break;
+                }
+            }
+            Err(e) => {
+                if e.kind() != io::ErrorKind::BrokenPipe {
+                    warn!("{label}: read error: {e}");
+                }
+                break;
+            }
+        }
+    }
+}
+
+async fn await_task(label: &str, task: JoinHandle<()>) {
+    match task.await {
+        Ok(()) => {}
+        Err(e) if e.is_cancelled() => {}
+        Err(e) => warn!("{label}: task join error: {e}"),
+    }
 }
 
 fn collect_exposed_host_env(patterns: &[String]) -> Vec<(String, String)> {

@@ -5,7 +5,8 @@ use serde::Deserialize;
 use serde_json;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::{Command as StdCommand, Stdio};
+use tokio::process::Command as TokioCommand;
 
 /// Detected container engine with its binary path.
 #[derive(Debug, Clone)]
@@ -39,7 +40,7 @@ impl Engine {
     }
 
     fn find(name: &str) -> Result<Self> {
-        let output = Command::new("which")
+        let output = StdCommand::new("which")
             .arg(name)
             .output()
             .with_context(|| format!("Failed to look up `{name}`"))?;
@@ -110,7 +111,7 @@ impl Engine {
 
         debug!("Dockerfile at: {}", tmp.path().display());
 
-        let mut cmd = Command::new(&self.path);
+        let mut cmd = StdCommand::new(&self.path);
         cmd.arg("build")
             .arg("-f")
             .arg(tmp.path())
@@ -133,7 +134,7 @@ impl Engine {
     }
 
     fn image_package_state(&self, tag: &str) -> Result<ImagePackageState> {
-        let output = Command::new(&self.path)
+        let output = StdCommand::new(&self.path)
             .args(["image", "inspect", tag])
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
@@ -169,8 +170,8 @@ impl Engine {
     }
 
     /// Launch a container and return the child process with stdio connected.
-    pub fn run_container(&self, config: &RunConfig) -> Result<std::process::Child> {
-        let mut cmd = Command::new(&self.path);
+    pub fn run_container(&self, config: &RunConfig) -> Result<tokio::process::Child> {
+        let mut cmd = TokioCommand::new(&self.path);
         cmd.arg("run");
 
         // Always interactive with stdin attached for stdio-based MCP

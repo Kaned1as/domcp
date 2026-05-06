@@ -112,18 +112,21 @@ LABEL org.opencontainers.image.source="domcp"
 LABEL org.opencontainers.image.version="{version_label}"
 {packages_label}
 
+# Redirect tool caches to /tmp
+{env_vars}
+# Writable temp areas
+RUN mkdir -p /opt/home /tmp/.cache /tmp/.local /tmp/.npm
+
 # Install runner
 {runner_install}
 # Install common runtime tools
 {common_install}
 {extra_packages}
+
 # Pre-install the MCP server package for faster startup
 {preinstall}
-# Redirect tool caches to /tmp
-{env_vars}
-# Writable temp areas
-RUN mkdir -p /opt/home /tmp/.cache /tmp/.local /tmp/.npm && \
-    chmod -R 777 /opt/home /tmp/.cache /tmp/.local /tmp/.npm
+
+RUN chmod -R 777 /opt/home /tmp/.cache /tmp/.local /tmp/.npm
 
 {expose}
 {entrypoint}
@@ -197,9 +200,8 @@ mod tests {
         let cmd = vec!["uvx".into(), "mcp-server-fetch".into()];
         let df = generate(Runner::Uvx, &cmd, None, &[]).unwrap();
         assert!(df.contains("FROM alpine:latest"));
-        assert!(df.contains("apk add --no-cache uv"));
+        assert!(df.contains("apk add --no-cache python3 uv"));
         assert!(df.contains("RUN apk add --no-cache coreutils"));
-        assert!(df.contains("RUN apk add --no-cache python3"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-fetch\"]"));
         assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));

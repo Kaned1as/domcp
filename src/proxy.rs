@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use log::{debug, warn};
-use std::io::{self, Read, Write};
-use std::process::Child;
-use std::thread;
+use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+use tokio::process::Child;
+use tokio::task::JoinHandle;
 
 /// Bidirectional stdio proxy between the host process and the container.
 ///
@@ -22,7 +22,7 @@ impl StdioProxy {
     /// Run the bidirectional proxy until the child exits.
     ///
     /// Returns the child's exit status code.
-    pub fn run(mut self) -> Result<i32> {
+    pub async fn run(mut self) -> Result<i32> {
         let mut child_stdin = self
             .child
             .stdin
@@ -39,73 +39,62 @@ impl StdioProxy {
             .take()
             .context("Failed to take child stderr")?;
 
-        // Spawn thread: host stdin → container stdin
-        let stdin_thread = thread::Builder::new()
-            .name("stdin-proxy".to_string())
-            .spawn(move || {
-                proxy_stream("stdin→container", &mut io::stdin().lock(), &mut child_stdin);
-            })
-            .context("Failed to spawn stdin proxy thread")?;
+        let stdin_task = tokio::spawn(async move {
+            let mut host_stdin = io::stdin();
+            proxy_stream("stdin→container", &mut host_stdin, &mut child_stdin).await;
+        });
 
-        // Spawn thread: container stdout → host stdout
-        let stdout_thread = thread::Builder::new()
-            .name("stdout-proxy".to_string())
-            .spawn(move || {
-                proxy_stream(
-                    "container→stdout",
-                    &mut child_stdout,
-                    &mut io::stdout().lock(),
-                );
-            })
-            .context("Failed to spawn stdout proxy thread")?;
+        let stdout_task = tokio::spawn(async move {
+            let mut host_stdout = io::stdout();
+            proxy_stream("container→stdout", &mut child_stdout, &mut host_stdout).await;
+        });
 
-        // Spawn thread: container stderr → host stderr
-        let stderr_thread = thread::Builder::new()
-            .name("stderr-proxy".to_string())
-            .spawn(move || {
-                proxy_stream(
-                    "container→stderr",
-                    &mut child_stderr,
-                    &mut io::stderr().lock(),
-                );
-            })
-            .context("Failed to spawn stderr proxy thread")?;
+        let stderr_task = tokio::spawn(async move {
+            let mut host_stderr = io::stderr();
+            proxy_stream("container→stderr", &mut child_stderr, &mut host_stderr).await;
+        });
 
-        // Wait for child to exit
         let status = self
             .child
             .wait()
+            .await
             .context("Failed to wait for container process")?;
 
         debug!("Container exited with status: {}", status);
 
-        // Wait for proxy threads (they'll finish once streams close)
-        let _ = stdin_thread.join();
-        let _ = stdout_thread.join();
-        let _ = stderr_thread.join();
+        // Stop waiting on host stdin once the child is gone. The output tasks
+        // are still awaited so any buffered container output is drained.
+        stdin_task.abort();
+
+        await_task("stdin→container", stdin_task).await;
+        await_task("container→stdout", stdout_task).await;
+        await_task("container→stderr", stderr_task).await;
 
         Ok(status.code().unwrap_or(1))
     }
 }
 
 /// Copy data from reader to writer until EOF or error.
-fn proxy_stream(label: &str, reader: &mut dyn Read, writer: &mut dyn Write) {
+async fn proxy_stream<R, W>(label: &str, reader: &mut R, writer: &mut W)
+where
+    R: AsyncRead + Unpin,
+    W: AsyncWrite + Unpin,
+{
     let mut buf = [0u8; 8192];
     loop {
-        match reader.read(&mut buf) {
+        match reader.read(&mut buf).await {
             Ok(0) => {
                 debug!("{label}: EOF");
                 break;
             }
             Ok(n) => {
-                if let Err(e) = writer.write_all(&buf[..n]) {
-                    // Broken pipe is expected when the other side closes
+                if let Err(e) = writer.write_all(&buf[..n]).await {
                     if e.kind() != io::ErrorKind::BrokenPipe {
                         warn!("{label}: write error: {e}");
                     }
                     break;
                 }
-                if let Err(e) = writer.flush() {
+                if let Err(e) = writer.flush().await {
                     if e.kind() != io::ErrorKind::BrokenPipe {
                         warn!("{label}: flush error: {e}");
                     }
@@ -118,6 +107,24 @@ fn proxy_stream(label: &str, reader: &mut dyn Read, writer: &mut dyn Write) {
                 }
                 break;
             }
+        }
+    }
+
+    if let Err(e) = writer.shutdown().await {
+        if e.kind() != io::ErrorKind::BrokenPipe {
+            warn!("{label}: shutdown error: {e}");
+        }
+    }
+}
+
+async fn await_task(label: &str, task: JoinHandle<()>) {
+    match task.await {
+        Ok(()) => {}
+        Err(e) if e.is_cancelled() => {
+            debug!("{label}: task cancelled");
+        }
+        Err(e) => {
+            warn!("{label}: task join error: {e}");
         }
     }
 }

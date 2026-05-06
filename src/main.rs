@@ -10,7 +10,8 @@ mod transport;
 use anyhow::Result;
 use log::info;
 
-fn main() -> Result<()> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"))
         .format_timestamp(None)
         .init();
@@ -22,5 +23,5 @@ fn main() -> Result<()> {
         env!("CARGO_PKG_VERSION")
     );
 
-    runner::run(args)
+    runner::run(args).await
 }
