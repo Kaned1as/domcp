@@ -24,9 +24,10 @@ Description
 
 `domcp` generates a Dockerfile for the given command, builds a container
 image, and runs it with restricted permissions. The docker image is cached
-for subsequent invocations. The MCP transport mode
-The MCP transport mode (stdio or HTTP/SSE) is detected automatically from command flags and any environment variables that domcp will pass into the container.
+for subsequent invocations.
 
+The MCP transport mode (stdio or HTTP/SSE) is detected automatically
+from command flags and any environment variables that domcp will pass into the container.
 
 The container engine is auto-detected, supporting `podman` and `docker`.
 
@@ -86,7 +87,7 @@ Requires podman or docker.
 Examples
 --------
 
-Stdio server:
+Simple stdio-based server:
 
 ```bash
 domcp -- uvx mcp-server-fetch
@@ -118,20 +119,50 @@ Mount additional directories:
 
 ```bash
 domcp -v /data -- uvx mcp-server-filesystem /data
-domcp -v ~/.ssh -- uvx mcp-server-filesystem /opt/home/.ssh
+domcp -v ~/.ssh -- uvx slepp-ssh-mcp
 ```
 
-(Home-relative mounts such as `~/.ssh` are remapped to `/opt/home/...` inside `domcp` so that paths relative to `$HOME` resolve consistently in the container.)
 Use docker instead of podman:
 
 ```bash
 domcp --engine docker -- npx -y @modelcontextprotocol/server-everything
 ```
 
+Pass filtered env variables to the server:
+
+```bash
+domcp -e "ATLASSIAN_*" -- uvx atlassian-mcp-server
+```
+
 Preview without building:
 
 ```bash
 domcp --dry-run -- uvx mcp-server-fetch
+```
+
+Real-world examples
+-------------------
+
+Here are the examples of MCP servers that I use daily:
+
+AWS:
+```bash
+domcp -e "AWS_*" -i awscli -v ~/.aws --no-workdir -- uvx awslabs.aws-api-mcp-server@latest
+```
+
+SSH:
+```bash
+domcp -i openssh -v ~/.ssh -v ~/.dotfiles/ssh -- uvx --from slepp-ssh-mcp ssh-mcp
+```
+
+Jira/Confluence
+```bash
+domcp -e "JIRA_*" -e "CONFLUENCE_*" --no-workdir -- uvx mcp-atlassian
+```
+
+Slack
+```bash
+domcp -e "SLACK_MCP_*" --no-workdir -- npx -y slack-mcp-server --transport stdio
 ```
 
 Transport Detection
