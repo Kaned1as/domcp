@@ -201,14 +201,18 @@ impl Engine {
         }
 
         // Extra mounts (each path mounted at the same location)
-        for m in &config.extra_mounts {
-            let p = m.canonicalize().unwrap_or_else(|_| m.clone());
-            let ps = p.display().to_string();
-            let mount = format!("{ps}:{ps}");
+        for mount in &config.extra_mounts {
+            let host_path = mount
+                .host
+                .canonicalize()
+                .unwrap_or_else(|_| mount.host.clone());
+            let host_str = host_path.display().to_string();
+            let container_str = mount.container.display().to_string();
+            let spec = format!("{host_str}:{container_str}");
             if self.is_podman {
-                cmd.args(["-v", &format!("{mount}:Z")]);
+                cmd.args(["-v", &format!("{spec}:Z")]);
             } else {
-                cmd.args(["-v", &mount]);
+                cmd.args(["-v", &spec]);
             }
         }
 
@@ -276,11 +280,18 @@ struct InspectConfig {
     labels: Option<HashMap<String, String>>,
 }
 
+/// Bind mount specification between host and container paths.
+#[derive(Debug, Clone)]
+pub struct BindMount {
+    pub host: PathBuf,
+    pub container: PathBuf,
+}
+
 /// Configuration for running a container.
 pub struct RunConfig {
     pub image: String,
     pub workdir: Option<PathBuf>,
-    pub extra_mounts: Vec<PathBuf>,
+    pub extra_mounts: Vec<BindMount>,
     pub envs: Vec<String>,
     pub network: Option<String>,
     pub ports: Vec<String>,

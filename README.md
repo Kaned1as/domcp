@@ -118,8 +118,10 @@ Mount additional directories:
 
 ```bash
 domcp -v /data -- uvx mcp-server-filesystem /data
+domcp -v ~/.ssh -- uvx mcp-server-filesystem /opt/home/.ssh
 ```
 
+(Home-relative mounts such as `~/.ssh` are remapped to `/opt/home/...` inside `domcp` so that paths relative to `$HOME` resolve consistently in the container.)
 Use docker instead of podman:
 
 ```bash

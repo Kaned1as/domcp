@@ -31,13 +31,13 @@ impl Runner {
     /// Environment variables to redirect tool caches to /tmp.
     fn env_vars(self) -> &'static str {
         match self {
-            Self::Uvx => concat!("ENV UV_CACHE_DIR=/tmp/.cache/uv\n", "ENV HOME=/tmp/home\n",),
+            Self::Uvx => concat!("ENV UV_CACHE_DIR=/tmp/.cache/uv\n", "ENV HOME=/opt/home\n",),
             Self::Pipx => concat!(
                 "ENV PIPX_HOME=/tmp/.local/pipx\n",
                 "ENV PIPX_BIN_DIR=/tmp/.local/bin\n",
-                "ENV HOME=/tmp/home\n",
+                "ENV HOME=/opt/home\n",
             ),
-            Self::Npx => concat!("ENV npm_config_cache=/tmp/.npm\n", "ENV HOME=/tmp/home\n",),
+            Self::Npx => concat!("ENV npm_config_cache=/tmp/.npm\n", "ENV HOME=/opt/home\n",),
         }
     }
 
@@ -113,8 +113,8 @@ LABEL org.opencontainers.image.source="domcp"
 # Redirect tool caches to /tmp
 {env_vars}
 # Writable temp areas
-RUN mkdir -p /tmp/home /tmp/.cache /tmp/.local /tmp/.npm && \
-    chmod -R 777 /tmp/home /tmp/.cache /tmp/.local /tmp/.npm
+RUN mkdir -p /opt/home /tmp/.cache /tmp/.local /tmp/.npm && \
+    chmod -R 777 /opt/home /tmp/.cache /tmp/.local /tmp/.npm
 
 {expose}
 {entrypoint}

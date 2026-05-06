@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use log::info;
 
 use crate::cli::Args;
-use crate::container::{Engine, RunConfig};
+use crate::container::{BindMount, Engine, RunConfig};
 use crate::dockerfile::{self, Runner};
 use crate::proxy::StdioProxy;
 use crate::transport::{self, Transport};
@@ -49,6 +49,8 @@ pub fn run(args: Args) -> Result<()> {
         apply_http_transport(&network, &mut ports, port)?;
     }
 
+    let extra_mounts = prepare_extra_mounts(&args.extra_mounts);
+
     // 5. Detect container engine
     let engine = Engine::detect(args.engine.as_deref())?;
 
@@ -72,8 +74,12 @@ pub fn run(args: Args) -> Result<()> {
             Some(w) => println!("{}", w.display()),
             None => println!("(none)"),
         }
-        for m in &args.extra_mounts {
-            println!("Extra mount: {}", m.display());
+        for (original, mapped) in args.extra_mounts.iter().zip(extra_mounts.iter()) {
+            println!(
+                "Extra mount: {} -> {}",
+                original.display(),
+                mapped.container.display()
+            );
         }
         if !ports.is_empty() {
             println!("\n=== Port mappings ===");
@@ -105,7 +111,7 @@ pub fn run(args: Args) -> Result<()> {
     let config = RunConfig {
         image: image_tag,
         workdir,
-        extra_mounts: args.extra_mounts,
+        extra_mounts,
         envs,
         network,
         ports,
@@ -264,6 +270,27 @@ fn env_pattern_matches(pattern: &str, key: &str) -> bool {
     }
 }
 
+fn prepare_extra_mounts(mounts: &[std::path::PathBuf]) -> Vec<BindMount> {
+    let home = dirs::home_dir();
+
+    // translate ~/dir to /opt/home/dir inside the container
+    mounts
+        .iter()
+        .map(|mount| {
+            let host = mount.canonicalize().unwrap_or_else(|_| mount.clone());
+
+            let mut container = host.clone();
+            if let Some(home_dir) = home.as_ref() {
+                if let Ok(rel) = host.strip_prefix(home_dir) {
+                    container = std::path::PathBuf::from("/opt/home").join(rel);
+                }
+            }
+
+            BindMount { host, container }
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -303,5 +330,33 @@ mod tests {
     #[test]
     fn collect_exposed_host_env_empty_without_patterns() {
         assert!(collect_exposed_host_env(&[]).is_empty());
+    }
+
+    #[test]
+    fn prepare_extra_mounts_rewrites_home_relative_paths() {
+        let home = dirs::home_dir().expect("home directory unavailable");
+        let mount = home.join(".ssh");
+        let mounts = vec![mount.clone()];
+
+        let prepared = prepare_extra_mounts(&mounts);
+
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared[0].host, mount);
+        assert_eq!(
+            prepared[0].container,
+            std::path::Path::new("/opt/home").join(".ssh")
+        );
+    }
+
+    #[test]
+    fn prepare_extra_mounts_passthrough_outside_home() {
+        let mount = std::path::PathBuf::from("/tmp/domcp-non-home");
+        let mounts = vec![mount.clone()];
+
+        let prepared = prepare_extra_mounts(&mounts);
+
+        assert_eq!(prepared.len(), 1);
+        assert_eq!(prepared[0].host, mount);
+        assert_eq!(prepared[0].container, mount);
     }
 }
