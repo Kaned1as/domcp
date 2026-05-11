@@ -204,7 +204,10 @@ mod tests {
         assert!(df.contains("RUN apk add --no-cache coreutils"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
         assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-fetch\"]"));
-        assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));
+        assert!(df.contains(&format!(
+            "LABEL org.opencontainers.image.version=\"{}\"",
+            env!("CARGO_PKG_VERSION")
+        )));
         assert!(df.contains("LABEL domcp.packages=\"\""));
         assert!(!df.contains("EXPOSE"));
     }
@@ -224,7 +227,10 @@ mod tests {
         assert!(!df.contains("RUN apk add --no-cache python3"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
         assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/home/user/project\"]"));
-        assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));
+        assert!(df.contains(&format!(
+            "LABEL org.opencontainers.image.version=\"{}\"",
+            env!("CARGO_PKG_VERSION")
+        )));
         assert!(df.contains("LABEL domcp.packages=\"\""));
     }
 
@@ -244,7 +250,10 @@ mod tests {
         let df = generate(Runner::Uvx, &cmd, None, &pkgs).unwrap();
         assert!(df.contains("apk add --no-cache git openssh"));
         assert!(df.contains("RUN apk add --no-cache python3"));
-        assert!(df.contains(&format!("LABEL org.opencontainers.image.version=\"{}\"", env!("CARGO_PKG_VERSION"))));
+        assert!(df.contains(&format!(
+            "LABEL org.opencontainers.image.version=\"{}\"",
+            env!("CARGO_PKG_VERSION")
+        )));
         assert!(df.contains("LABEL domcp.packages=\"git,openssh\""));
     }
 }

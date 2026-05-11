@@ -114,6 +114,38 @@ mod tests {
             vec!["uvx", "mcp-server-fetch", "--", "--help"]
         );
     }
+
+    #[test]
+    fn expand_tilde_rewrites_bare_home_directory() {
+        let home = dirs::home_dir().expect("home directory unavailable");
+
+        assert_eq!(expand_tilde(PathBuf::from("~")), home);
+    }
+
+    #[test]
+    fn expand_tilde_rewrites_home_relative_paths() {
+        let home = dirs::home_dir().expect("home directory unavailable");
+
+        assert_eq!(expand_tilde(PathBuf::from("~/repo")), home.join("repo"));
+        assert_eq!(
+            expand_tilde(PathBuf::from("~/.ssh/config")),
+            home.join(".ssh").join("config")
+        );
+    }
+
+    #[test]
+    fn expand_tilde_leaves_non_tilde_paths_unchanged() {
+        let path = PathBuf::from("/tmp/domcp-test-path");
+
+        assert_eq!(expand_tilde(path.clone()), path);
+    }
+
+    #[test]
+    fn expand_tilde_does_not_expand_other_users() {
+        let path = PathBuf::from("~alice/project");
+
+        assert_eq!(expand_tilde(path.clone()), path);
+    }
 }
 
 pub fn parse() -> Args {

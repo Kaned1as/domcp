@@ -160,6 +160,32 @@ impl Engine {
         }
     }
 
+    /// Append a bind mount to the container runtime command using the explicit
+    /// `--mount` syntax.
+    ///
+    /// `cmd` is the in-progress container runtime command that will receive the
+    /// extra `--mount` arguments.
+    ///
+    /// `mount` describes both sides of the bind:
+    /// - `mount.host` is the host path that must be exposed to the container
+    /// - `mount.container` is the Linux-style destination path inside the container
+    ///
+    /// Podman gets an extra SELinux relabel hint so mounted content remains
+    /// accessible on SELinux-enabled hosts.
+    fn add_bind_mount(&self, cmd: &mut TokioCommand, mount: &BindMount) {
+        let mut spec = format!(
+            "type=bind,src={},dst={}",
+            mount.host.display(),
+            mount.container
+        );
+
+        if self.is_podman {
+            spec.push_str(",relabel=private");
+        }
+
+        cmd.args(["--mount", &spec]);
+    }
+
     /// Launch a container and return the child process with stdio connected.
     pub fn run_container(&self, config: &RunConfig) -> Result<tokio::process::Child> {
         let mut cmd = TokioCommand::new(&self.path);
@@ -176,36 +202,15 @@ impl Engine {
             cmd.args(["--network", net]);
         }
 
-        // Mount working directory at the same path inside the container
+        // Mount working directory and set the container working directory.
         if let Some(ref workdir) = config.workdir {
-            let workdir = workdir.canonicalize().unwrap_or_else(|_| workdir.clone());
-            let workdir_str = workdir.display().to_string();
-            let mount_arg = format!("{w}:{w}", w = workdir_str);
-
-            if self.is_podman {
-                cmd.args(["-v", &format!("{mount_arg}:Z")]);
-            } else {
-                cmd.args(["-v", &mount_arg]);
-            }
-
-            // Set container working directory
-            cmd.args(["-w", &workdir_str]);
+            self.add_bind_mount(&mut cmd, workdir);
+            cmd.args(["-w", &workdir.container]);
         }
 
-        // Extra mounts (each path mounted at the same location)
+        // Extra mounts.
         for mount in &config.extra_mounts {
-            let host_path = mount
-                .host
-                .canonicalize()
-                .unwrap_or_else(|_| mount.host.clone());
-            let host_str = host_path.display().to_string();
-            let container_str = mount.container.display().to_string();
-            let spec = format!("{host_str}:{container_str}");
-            if self.is_podman {
-                cmd.args(["-v", &format!("{spec}:Z")]);
-            } else {
-                cmd.args(["-v", &spec]);
-            }
+            self.add_bind_mount(&mut cmd, mount);
         }
 
         // User mapping for rootless safety
@@ -276,13 +281,13 @@ struct InspectConfig {
 #[derive(Debug, Clone)]
 pub struct BindMount {
     pub host: PathBuf,
-    pub container: PathBuf,
+    pub container: String,
 }
 
 /// Configuration for running a container.
 pub struct RunConfig {
     pub image: String,
-    pub workdir: Option<PathBuf>,
+    pub workdir: Option<BindMount>,
     pub extra_mounts: Vec<BindMount>,
     pub envs: Vec<String>,
     pub network: Option<String>,
