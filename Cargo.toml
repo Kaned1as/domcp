@@ -24,3 +24,4 @@ anyhow = "1"
 dirs = "6"
 nix = { version = "0.29", features = ["user"] }
 tokio = { version = "1", features = ["io-std", "io-util", "macros", "process", "rt", "signal", "sync"] }
+which = "8"

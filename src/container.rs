@@ -40,23 +40,14 @@ impl Engine {
     }
 
     fn find(name: &str) -> Result<Self> {
-        let output = StdCommand::new("which")
-            .arg(name)
-            .output()
-            .with_context(|| format!("Failed to look up `{name}`"))?;
-
-        if !output.status.success() {
-            bail!("`{name}` not found in PATH");
-        }
-
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        let path = which::which(name).with_context(|| format!("Failed to look up `{name}`"))?;
         let is_podman = name == "podman";
 
-        info!("Using container engine: {} ({})", name, path);
+        info!("Using container engine: {} ({})", name, path.display());
 
         Ok(Self {
             name: name.to_string(),
-            path: PathBuf::from(path),
+            path,
             is_podman,
         })
     }
