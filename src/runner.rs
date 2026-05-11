@@ -122,15 +122,14 @@ pub async fn run(args: Args) -> Result<()> {
 
     let child = engine.run_container(&config)?;
 
-    // 9. Set up signal forwarding (Ctrl+C → container SIGTERM)
-    let child_pid = child.id().context("Failed to get container process ID")?;
-    crate::signal::setup_signal_forwarding(child_pid);
+    // 9. Set up shutdown listening so the child owner can terminate the container directly.
+    let shutdown_rx = crate::signal::shutdown_channel();
 
     // 10. Run in the appropriate mode
     match detected_transport {
         Transport::Stdio => {
             info!("Container started, proxying stdio...");
-            let proxy = StdioProxy::new(child);
+            let proxy = StdioProxy::new(child, shutdown_rx);
             let exit_code = proxy.run().await?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
@@ -139,7 +138,7 @@ pub async fn run(args: Args) -> Result<()> {
         Transport::Http { port } => {
             info!("Container started in HTTP mode");
             info!("MCP server available at: http://localhost:{port}");
-            let exit_code = wait_http_container(child).await?;
+            let exit_code = wait_http_container(child, shutdown_rx).await?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -186,7 +185,10 @@ fn apply_http_transport(
 /// In HTTP mode there's no stdin/stdout proxy — the MCP client talks to the
 /// server over HTTP directly. We still forward stderr so error messages and
 /// logs from the server are visible.
-async fn wait_http_container(mut child: tokio::process::Child) -> Result<i32> {
+async fn wait_http_container(
+    mut child: tokio::process::Child,
+    mut shutdown_rx: tokio::sync::mpsc::UnboundedReceiver<&'static str>,
+) -> Result<i32> {
     // Forward stderr in the background
     let stderr_task = child.stderr.take().map(|mut container_stderr| {
         tokio::spawn(async move {
@@ -201,7 +203,23 @@ async fn wait_http_container(mut child: tokio::process::Child) -> Result<i32> {
         })
     });
 
-    let status = child.wait().await.context("Failed to wait for container")?;
+    let status = tokio::select! {
+        status = child.wait() => {
+            status.context("Failed to wait for container")?
+        }
+        shutdown = shutdown_rx.recv() => {
+            if let Some(reason) = shutdown {
+                info!("Received {reason}, terminating container process...");
+                child
+                    .start_kill()
+                    .context("Failed to terminate container process")?;
+            }
+            child
+                .wait()
+                .await
+                .context("Failed to wait for container after shutdown")?
+        }
+    };
 
     if let Some(task) = stderr_task {
         await_task("container→stderr", task).await;

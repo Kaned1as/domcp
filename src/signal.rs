@@ -1,29 +1,37 @@
 use log::debug;
-use nix::sys::signal::{self, Signal};
-use nix::unistd::Pid;
-use std::sync::atomic::{AtomicU32, Ordering};
+use tokio::sync::mpsc;
 
-/// Global storage for the container process PID so signal handlers can reach it.
-static CHILD_PID: AtomicU32 = AtomicU32::new(0);
-
-/// Register the child PID for signal forwarding and set up signal handlers.
+/// Create a receiver that yields a shutdown reason when the host process is
+/// interrupted.
 ///
-/// When the user hits Ctrl+C (SIGINT) or the process receives SIGTERM,
-/// we forward the signal to the container process so it shuts down cleanly.
-pub fn setup_signal_forwarding(child_pid: u32) {
-    CHILD_PID.store(child_pid, Ordering::SeqCst);
+/// The task that owns the container `Child` should listen on this receiver and
+/// terminate the child directly. That keeps child ownership local and avoids
+/// platform-specific PID signaling.
+pub fn shutdown_channel() -> mpsc::UnboundedReceiver<&'static str> {
+    let (tx, rx) = mpsc::unbounded_channel();
 
-    // We use a simple approach: set up a ctrlc handler that forwards SIGTERM
-    // to the child. This works because:
-    // 1. The container runtime (podman/docker) forwards signals to the container PID 1
-    // 2. SIGTERM is the standard graceful shutdown signal
-    if let Err(e) = ctrlc::set_handler(move || {
-        let pid = CHILD_PID.load(Ordering::SeqCst);
-        if pid != 0 {
-            debug!("Forwarding SIGTERM to child PID {}", pid);
-            let _ = signal::kill(Pid::from_raw(pid as i32), Signal::SIGTERM);
+    let ctrlc_tx = tx.clone();
+    tokio::spawn(async move {
+        match tokio::signal::ctrl_c().await {
+            Ok(()) => {
+                let _ = ctrlc_tx.send("Ctrl+C");
+            }
+            Err(e) => debug!("Failed to listen for Ctrl+C: {}", e),
         }
-    }) {
-        debug!("Failed to set Ctrl+C handler: {}", e);
-    }
+    });
+
+    #[cfg(unix)]
+    tokio::spawn(async move {
+        use tokio::signal::unix::{SignalKind, signal};
+
+        match signal(SignalKind::terminate()) {
+            Ok(mut stream) => {
+                stream.recv().await;
+                let _ = tx.send("SIGTERM");
+            }
+            Err(e) => debug!("Failed to listen for SIGTERM: {}", e),
+        }
+    });
+
+    rx
 }

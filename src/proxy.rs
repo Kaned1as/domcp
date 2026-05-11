@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use tokio::io::{self, AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::process::Child;
+use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
 /// Bidirectional stdio proxy between the host process and the container.
@@ -12,11 +13,12 @@ use tokio::task::JoinHandle;
 /// containerized server as if it were running locally.
 pub struct StdioProxy {
     child: Child,
+    shutdown_rx: mpsc::UnboundedReceiver<&'static str>,
 }
 
 impl StdioProxy {
-    pub fn new(child: Child) -> Self {
-        Self { child }
+    pub fn new(child: Child, shutdown_rx: mpsc::UnboundedReceiver<&'static str>) -> Self {
+        Self { child, shutdown_rx }
     }
 
     /// Run the bidirectional proxy until the child exits.
@@ -54,11 +56,23 @@ impl StdioProxy {
             proxy_stream("container→stderr", &mut child_stderr, &mut host_stderr).await;
         });
 
-        let status = self
-            .child
-            .wait()
-            .await
-            .context("Failed to wait for container process")?;
+        let status = tokio::select! {
+            status = self.child.wait() => {
+                status.context("Failed to wait for container process")?
+            }
+            shutdown = self.shutdown_rx.recv() => {
+                if let Some(reason) = shutdown {
+                    info!("Received {reason}, terminating container process...");
+                    self.child
+                        .start_kill()
+                        .context("Failed to terminate container process")?;
+                }
+                self.child
+                    .wait()
+                    .await
+                    .context("Failed to wait for container process after shutdown")?
+            }
+        };
 
         debug!("Container exited with status: {}", status);
 
