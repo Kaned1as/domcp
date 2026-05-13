@@ -363,7 +363,9 @@ fn map_container_path(host: &std::path::Path) -> String {
                 prefix_segments.push(server.to_string_lossy().into_owned());
                 prefix_segments.push(share.to_string_lossy().into_owned());
             }
-            other => prefix_segments.push(other.as_os_str().to_string_lossy().into_owned()),
+            Prefix::Verbatim(path) | Prefix::DeviceNS(path) => {
+                prefix_segments.push(path.to_string_lossy().into_owned());
+            }
         }
     }
 

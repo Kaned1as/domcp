@@ -4,20 +4,59 @@ variables:
   GIT_SUBMODULE_STRATEGY: "recursive"
 
 stages:
-  - build
+  - release
 
-release x86_64 static:
-  image: docker.io/library/rust:alpine
-  stage: build
+.crossrs-build-template:
+  image: ghcr.io/cross-rs/$CARGO_BUILD_TARGET:main
+  stage: release
   dependencies: []
   before_script:
+    - export RUSTUP_HOME="${PWD}/.rustup_cache"
     - export CARGO_HOME="${PWD}/.cargo_cache"
+    - curl -f https://sh.rustup.rs | sh -s -- -y --no-modify-path
+    - source "$CARGO_HOME/env"
+    - rustup target add $CARGO_BUILD_TARGET
   script:
-    - cargo build --release
+    - cargo build --release --target $CARGO_BUILD_TARGET
   artifacts:
     paths:
-      - target/release/domcp
+      - target/$CARGO_BUILD_TARGET/release/domcp
   cache:
+    key: cache-$CI_JOB_NAME_SLUG
     paths:
+      - .rustup_cache/
       - .cargo_cache/
       - target/
+
+release x86_64 linux static:
+  extends: [.crossrs-build-template]
+  variables:
+    CARGO_BUILD_TARGET: x86_64-unknown-linux-musl
+
+release aarch64 linux static:
+  extends: [.crossrs-build-template]
+  variables:
+    CARGO_BUILD_TARGET: aarch64-unknown-linux-musl
+
+release armv7 linux static:
+  extends: [.crossrs-build-template]
+  variables:
+    CARGO_BUILD_TARGET: armv7-unknown-linux-musleabihf
+
+release riscv64 linux static:
+  extends: [.crossrs-build-template]
+  variables:
+    CARGO_BUILD_TARGET: riscv64gc-unknown-linux-musl
+
+# Windows needs special care
+release x86_64 windows msvc:
+  extends: [.crossrs-build-template]
+  image: docker.io/aloismisery/x86_64-pc-windows-msvc-cross:extra
+  variables:
+    CARGO_BUILD_TARGET: x86_64-pc-windows-msvc
+  script:
+    - cargo build --release --target $CARGO_BUILD_TARGET
+    - wine target/$CARGO_BUILD_TARGET/release/domcp.exe --version
+  artifacts:
+    paths:
+      - target/$CARGO_BUILD_TARGET/release/domcp.exe

@@ -186,6 +186,41 @@ impl Engine {
         cmd.args(["--mount", &spec]);
     }
 
+    /// Apply host user mapping options for the current platform.
+    ///
+    /// `cmd` is the in-progress container runtime command.
+    /// `config` provides the user's `--no-user-map` preference.
+    ///
+    /// On Unix, Podman uses `--userns=keep-id` and Docker receives an explicit
+    /// `--user UID:GID`. On Windows we currently do nothing because Linux-style
+    /// UID/GID mapping does not translate to the host platform.
+    fn add_user_mapping(&self, cmd: &mut TokioCommand, config: &RunConfig) {
+        if !config.user_map {
+            return;
+        }
+
+        #[cfg(unix)]
+        {
+            if self.is_podman {
+                // Podman: --userns=keep-id maps host UID to container UID=0
+                // This is the cleanest rootless approach — the user inside
+                // the container sees themselves as their host UID with proper
+                // file ownership on mounted volumes.
+                cmd.args(["--userns=keep-id"]);
+            } else {
+                // Docker: explicitly set UID:GID
+                let uid = nix::unistd::getuid();
+                let gid = nix::unistd::getgid();
+                cmd.args(["--user", &format!("{uid}:{gid}")]);
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            let _ = cmd;
+        }
+    }
+
     /// Launch a container and return the child process with stdio connected.
     pub fn run_container(&self, config: &RunConfig) -> Result<tokio::process::Child> {
         let mut cmd = TokioCommand::new(&self.path);
@@ -213,21 +248,8 @@ impl Engine {
             self.add_bind_mount(&mut cmd, mount);
         }
 
-        // User mapping for rootless safety
-        if config.user_map {
-            if self.is_podman {
-                // Podman: --userns=keep-id maps host UID to container UID=0
-                // This is the cleanest rootless approach — the user inside
-                // the container sees themselves as their host UID with proper
-                // file ownership on mounted volumes.
-                cmd.args(["--userns=keep-id"]);
-            } else {
-                // Docker: explicitly set UID:GID
-                let uid = nix::unistd::getuid();
-                let gid = nix::unistd::getgid();
-                cmd.args(["--user", &format!("{uid}:{gid}")]);
-            }
-        }
+        // User mapping for rootless safety.
+        self.add_user_mapping(&mut cmd, config);
 
         // Port mappings
         for p in &config.ports {
