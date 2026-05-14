@@ -4,11 +4,12 @@ variables:
   GIT_SUBMODULE_STRATEGY: "recursive"
 
 stages:
+  - build
   - release
 
 .crossrs-build-template:
   image: ghcr.io/cross-rs/$CARGO_BUILD_TARGET:main
-  stage: release
+  stage: build
   dependencies: []
   before_script:
     - export RUSTUP_HOME="${PWD}/.rustup_cache"
@@ -60,3 +61,54 @@ release x86_64 windows msvc:
   artifacts:
     paths:
       - target/$CARGO_BUILD_TARGET/release/domcp.exe
+
+release:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs:
+    - job: release x86_64 linux static
+    - job: release aarch64 linux static
+    - job: release armv7 linux static
+    - job: release riscv64 linux static
+    - job: release x86_64 windows msvc
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  variables:
+    GLAB_ENABLE_CI_AUTOLOGIN: "true"
+    PACKAGE_URL: $CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/domcp/$CI_COMMIT_TAG
+  before_script:
+    - apk add --no-cache curl jq
+  script:
+    - glab release create "$CI_COMMIT_TAG" --notes "Release $CI_COMMIT_TAG"
+    - | 
+      for asset in target/*/release/domcp target/*/release/domcp.exe; do
+        asset_name=$(basename $asset)
+        release_dir=$(dirname $asset)
+        target_dir=$(dirname $release_dir)
+        target_name=$(basename $target_dir)
+
+        # domcp.exe -> domcp-x86_64-pc-windows-msvc.exe
+        registry_name=${asset_name/domcp/domcp-${target_name}}
+        echo "Uploading $asset -> $PACKAGE_URL/${registry_name}"
+        curl --fail-with-body --header "JOB-TOKEN: ${CI_JOB_TOKEN}" \
+             --upload-file "$asset" "${PACKAGE_URL}/${registry_name}"
+        link=$(jq -n \
+          --arg name "domcp (${target_name})" \
+          --arg url  "${PACKAGE_URL}/${registry_name}" \
+          --arg path "/$asset" \
+          '[{name: $name, url: $url, link_type: "package", direct_asset_path: $path}]')
+        glab release upload "$CI_COMMIT_TAG" --assets-links="$link"
+      done
+
+cargo publish:
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG
+  needs:
+    - job: release x86_64 linux static
+      artifacts: false
+    - job: release x86_64 windows msvc
+      artifacts: false
+  image: docker.io/library/rust:alpine
+  script:
+    - cargo publish --token ${CARGO_PUBLISH_TOKEN}

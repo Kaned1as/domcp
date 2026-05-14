@@ -34,6 +34,7 @@ The container engine is auto-detected, supporting `podman` and `docker`.
 Client Configuration
 --------------------
 
+Just prepend your MCP startup command with `domcp [options] --`.
 Example `claude_desktop_config.json`:
 
 ```json
@@ -56,6 +57,28 @@ Example `claude_desktop_config.json`:
 }
 ```
 
+Installation
+------------
+
+You can grab the latest released binary from [Releases][releases] page or use permalinks below:
+
+* [**aarch64 (arm64) Linux release binary**][linux-aarch64]
+* [**armeabi-v7a (armv7) Linux release binary**][linux-armv7]
+* [**riscv64gc (riscv64) Linux release binary**][linux-riscv64]
+* [**x86_64 (amd64) Linux release binary**][linux-amd64]
+* [**x86_64 (amd64) Windows executable**][windows-amd64]
+
+
+Arch users can install AUR package [domcp-git][aur]
+
+Development version can be installed by cloning this repo and executing:
+
+```bash
+cargo install --path .
+```
+
+Don't forget it requires podman or docker as an underlying container engine.
+
 Options
 -------
 
@@ -72,17 +95,6 @@ Options
         --dry-run                Print generated Dockerfile and exit
     -h, --help                   Print help
     -V, --version                Print version
-
-Installation
-------------
-
-I'm currently working on packaging options, they will appear in this section.
-
-```bash
-cargo install --path .
-```
-
-Requires podman or docker.
 
 Examples
 --------
@@ -218,4 +230,13 @@ License
     but WITHOUT ANY WARRANTY; without even the implied warranty of
     MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
     GNU General Public License for more details.
+
+
+[aur]:           https://aur.archlinux.org/packages/domcp-git
+[releases]:      https://gitlab.com/Kanedias/domcp/-/releases/permalink/latest
+[windows-amd64]: https://gitlab.com/Kanedias/domcp/-/releases/permalink/latest/downloads/target/x86_64-pc-windows-msvc/release/domcp.exe
+[linux-amd64]:   https://gitlab.com/Kanedias/domcp/-/releases/permalink/latest/downloads/target/x86_64-unknown-linux-musl/release/domcp
+[linux-armv7]:   https://gitlab.com/Kanedias/domcp/-/releases/permalink/latest/downloads/target/armv7-unknown-linux-musleabihf/release/domcp
+[linux-aarch64]: https://gitlab.com/Kanedias/domcp/-/releases/permalink/latest/downloads/target/aarch64-unknown-linux-musl/release/domcp
+[linux-riscv64]: https://gitlab.com/Kanedias/domcp/-/releases/permalink/latest/downloads/target/riscv64gc-unknown-linux-musl/release/domcp
 
