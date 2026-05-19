@@ -1,0 +1,29 @@
+Source: domcp
+Section: utils
+Priority: optional
+Maintainer: Oleg Chernovskiy <kanedias@house-of-maker.online>
+Build-Depends:
+ debhelper-compat (= 13),
+ cargo:native,
+ rustc:native
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Homepage: https://gitlab.com/Kanedias/domcp
+Vcs-Browser: https://gitlab.com/Kanedias/domcp
+Vcs-Git: https://gitlab.com/Kanedias/domcp.git
+
+Package: domcp
+Architecture: any
+Depends:
+ ${misc:Depends},
+ ${shlibs:Depends}
+Recommends:
+ podman | docker.io
+Description: Dockerize MCP servers for safer interaction
+ domcp wraps MCP server launch commands such as uvx, npx, and pipx in
+ containers, proxying stdio or HTTP transports while mounting only the
+ working directory by default.
+ .
+ Host environment variables are not forwarded unless explicitly exposed,
+ which helps keep API keys and other sensitive host state out of MCP
+ server containers.

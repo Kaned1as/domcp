@@ -29,28 +29,28 @@ stages:
       - .cargo_cache/
       - target/
 
-release x86_64 linux static:
+package x86_64 linux static:
   extends: [.crossrs-build-template]
   variables:
     CARGO_BUILD_TARGET: x86_64-unknown-linux-musl
 
-release aarch64 linux static:
+package aarch64 linux static:
   extends: [.crossrs-build-template]
   variables:
     CARGO_BUILD_TARGET: aarch64-unknown-linux-musl
 
-release armv7 linux static:
+package armv7 linux static:
   extends: [.crossrs-build-template]
   variables:
     CARGO_BUILD_TARGET: armv7-unknown-linux-musleabihf
 
-release riscv64 linux static:
+package riscv64 linux static:
   extends: [.crossrs-build-template]
   variables:
     CARGO_BUILD_TARGET: riscv64gc-unknown-linux-musl
 
 # Windows needs special care
-release x86_64 windows msvc:
+package x86_64 windows msvc:
   extends: [.crossrs-build-template]
   image: docker.io/aloismisery/x86_64-pc-windows-msvc-cross:extra
   variables:
@@ -62,16 +62,45 @@ release x86_64 windows msvc:
     paths:
       - target/$CARGO_BUILD_TARGET/release/domcp.exe
 
-release:
+package x86_64 debian:
+  stage: build
+  image: docker.io/library/debian:stable
+  variables:
+    DEBIAN_FRONTEND: noninteractive
+    DEBEMAIL: kanedias@house-of-maker.online
+  before_script:
+    - apt-get update -qq
+    - apt-get install --yes cargo rustc debhelper-compat git-buildpackage
+  script:
+    - cp -a packaging/debian/debian ./
+    # generate changelog
+    - gbp dch --ignore-branch
+        --since="$(git describe --tags --abbrev=0 HEAD^)"
+        --new-version="$(git describe --tags)"
+        --distribution="stable"
+        --urgency="medium"
+        --spawn-editor=never
+    # execute build
+    - dpkg-buildpackage --build="binary"
+        --unsigned-source
+        --unsigned-changes
+    # take the built packages from the parent dir
+    - mkdir -pv dist/
+    - mv -v ../*.deb* dist/
+  artifacts:
+    paths:
+      - dist/*
+
+release publish:
   stage: release
   rules:
     - if: $CI_COMMIT_TAG
   needs:
-    - job: release x86_64 linux static
-    - job: release aarch64 linux static
-    - job: release armv7 linux static
-    - job: release riscv64 linux static
-    - job: release x86_64 windows msvc
+    - job: package x86_64 linux static
+    - job: package aarch64 linux static
+    - job: package armv7 linux static
+    - job: package riscv64 linux static
+    - job: package x86_64 windows msvc
   image: registry.gitlab.com/gitlab-org/cli:latest
   variables:
     GLAB_ENABLE_CI_AUTOLOGIN: "true"
@@ -105,9 +134,9 @@ cargo publish:
   rules:
     - if: $CI_COMMIT_TAG
   needs:
-    - job: release x86_64 linux static
+    - job: package x86_64 linux static
       artifacts: false
-    - job: release x86_64 windows msvc
+    - job: package x86_64 windows msvc
       artifacts: false
   image: docker.io/library/rust:alpine
   script:

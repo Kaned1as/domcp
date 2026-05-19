@@ -1,0 +1,25 @@
+#!/usr/bin/make -f
+
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
+export CARGO_HOME = $(CURDIR)/debian/cargo-home
+export CARGO_TARGET_DIR = $(CURDIR)/target
+
+%:
+	dh $@
+
+override_dh_auto_configure:
+	cargo fetch --locked
+
+override_dh_auto_build:
+	cargo build --frozen --release
+
+override_dh_auto_test:
+	cargo test --frozen --release
+
+override_dh_auto_install:
+	install -Dm755 target/release/domcp $(CURDIR)/debian/domcp/usr/bin/domcp
+	install -Dm644 README.md $(CURDIR)/debian/domcp/usr/share/doc/domcp/README.md
+	install -Dm644 LICENSE $(CURDIR)/debian/domcp/usr/share/doc/domcp/LICENSE
+
+override_dh_auto_clean:
+	rm -rf $(CURDIR)/debian/cargo-home $(CURDIR)/target

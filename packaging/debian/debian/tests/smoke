@@ -1,0 +1,4 @@
+#!/bin/sh
+set -eu
+
+domcp --version | grep -F "domcp"
