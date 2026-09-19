@@ -5,6 +5,8 @@ use tokio::process::Child;
 use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 
+use crate::container::Engine;
+
 /// Bidirectional stdio proxy between the host process and the container.
 ///
 /// MCP servers using stdio transport work by reading JSON-RPC messages from
@@ -12,13 +14,25 @@ use tokio::task::JoinHandle;
 /// both directions so the MCP client (e.g. Claude Desktop) sees the
 /// containerized server as if it were running locally.
 pub struct StdioProxy {
+    engine: Engine,
+    container_name: String,
     child: Child,
     shutdown_rx: mpsc::UnboundedReceiver<&'static str>,
 }
 
 impl StdioProxy {
-    pub fn new(child: Child, shutdown_rx: mpsc::UnboundedReceiver<&'static str>) -> Self {
-        Self { child, shutdown_rx }
+    pub fn new(
+        engine: Engine,
+        container_name: String,
+        child: Child,
+        shutdown_rx: mpsc::UnboundedReceiver<&'static str>,
+    ) -> Self {
+        Self {
+            engine,
+            container_name,
+            child,
+            shutdown_rx,
+        }
     }
 
     /// Run the bidirectional proxy until the child exits.
@@ -62,10 +76,8 @@ impl StdioProxy {
             }
             shutdown = self.shutdown_rx.recv() => {
                 if let Some(reason) = shutdown {
-                    info!("Received {reason}, terminating container process...");
-                    self.child
-                        .start_kill()
-                        .context("Failed to terminate container process")?;
+                    info!("Received {reason}, stopping container...");
+                    let _ = self.engine.stop_container(&self.container_name).await;
                 }
                 self.child
                     .wait()

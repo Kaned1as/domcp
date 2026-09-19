@@ -237,6 +237,12 @@ impl Engine {
             cmd.args(["--network", net]);
         }
 
+        // Init process for graceful signal handling
+        cmd.arg("--init");
+
+        // Container name
+        cmd.args(["--name", &config.name]);
+
         // Mount working directory and set the container working directory.
         if let Some(ref workdir) = config.workdir {
             self.add_bind_mount(&mut cmd, workdir);
@@ -278,6 +284,20 @@ impl Engine {
 
         Ok(child)
     }
+
+    /// Stop a running container gracefully.
+    pub async fn stop_container(&self, container_name: &str) -> Result<()> {
+        let mut cmd = TokioCommand::new(&self.path);
+        cmd.args(["stop", "--time", "10", container_name]);
+
+        let output = cmd.output().await.context("Failed to run stop command")?;
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            bail!("Failed to stop container: {}", stderr);
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -308,6 +328,7 @@ pub struct BindMount {
 
 /// Configuration for running a container.
 pub struct RunConfig {
+    pub name: String,
     pub image: String,
     pub workdir: Option<BindMount>,
     pub extra_mounts: Vec<BindMount>,
@@ -317,11 +338,8 @@ pub struct RunConfig {
     pub user_map: bool,
 }
 
-/// Generate an image tag from the command.
-///
-/// Uses the package name as a human-readable prefix with a `latest` tag.
-fn image_tag(command: &[String]) -> String {
-    let prefix = command
+pub fn package_prefix(command: &[String]) -> String {
+    command
         .iter()
         .skip(1) // skip command (uvx/npx)
         .find(|a| !a.starts_with('-')) // skip command-line options (-y/-g)
@@ -331,7 +349,14 @@ fn image_tag(command: &[String]) -> String {
                 .replace(|c: char| !c.is_alphanumeric() && c != '-', "-")
                 .to_lowercase()
         })
-        .unwrap_or_else(|| "mcp".to_string());
+        .unwrap_or_else(|| "mcp".to_string())
+}
+
+/// Generate an image tag from the command.
+///
+/// Uses the package name as a human-readable prefix with a `latest` tag.
+fn image_tag(command: &[String]) -> String {
+    let prefix = package_prefix(command);
 
     format!("domcp/{prefix}:latest")
 }

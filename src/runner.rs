@@ -109,8 +109,15 @@ pub async fn run(args: Args) -> Result<()> {
         None => info!("No workdir mounted"),
     }
 
+    let container_name = format!(
+        "domcp-{}-{}",
+        crate::container::package_prefix(&args.command),
+        std::process::id()
+    );
+
     // 8. Launch container
     let config = RunConfig {
+        name: container_name.clone(),
         image: image_tag,
         workdir,
         extra_mounts,
@@ -129,7 +136,7 @@ pub async fn run(args: Args) -> Result<()> {
     match detected_transport {
         Transport::Stdio => {
             info!("Container started, proxying stdio...");
-            let proxy = StdioProxy::new(child, shutdown_rx);
+            let proxy = StdioProxy::new(engine, container_name, child, shutdown_rx);
             let exit_code = proxy.run().await?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
@@ -138,7 +145,7 @@ pub async fn run(args: Args) -> Result<()> {
         Transport::Http { port } => {
             info!("Container started in HTTP mode");
             info!("MCP server available at: http://localhost:{port}");
-            let exit_code = wait_http_container(child, shutdown_rx).await?;
+            let exit_code = wait_http_container(engine, container_name, child, shutdown_rx).await?;
             if exit_code != 0 {
                 std::process::exit(exit_code);
             }
@@ -186,6 +193,8 @@ fn apply_http_transport(
 /// server over HTTP directly. We still forward stderr so error messages and
 /// logs from the server are visible.
 async fn wait_http_container(
+    engine: Engine,
+    container_name: String,
     mut child: tokio::process::Child,
     mut shutdown_rx: tokio::sync::mpsc::UnboundedReceiver<&'static str>,
 ) -> Result<i32> {
@@ -209,10 +218,8 @@ async fn wait_http_container(
         }
         shutdown = shutdown_rx.recv() => {
             if let Some(reason) = shutdown {
-                info!("Received {reason}, terminating container process...");
-                child
-                    .start_kill()
-                    .context("Failed to terminate container process")?;
+                info!("Received {reason}, stopping container...");
+                let _ = engine.stop_container(&container_name).await;
             }
             child
                 .wait()
