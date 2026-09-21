@@ -41,6 +41,8 @@ pub struct Args {
 
     /// Host environment variables to expose to the container.
     /// Accepts literal names or prefixes ending with `*` (e.g. `ATLASSIAN_*`).
+    /// If an environment variable's value starts with `cmd:`, it will be executed
+    /// and its standard output used as the value.
     /// Repeat the flag to allow multiple patterns.
     #[arg(short = 'e', long = "expose-env", value_name = "PATTERN")]
     pub expose_env: Vec<String>,

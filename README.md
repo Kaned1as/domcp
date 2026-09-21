@@ -146,6 +146,14 @@ Pass filtered env variables to the server:
 domcp -e "ATLASSIAN_*" -- uvx atlassian-mcp-server
 ```
 
+Dynamically fetch secrets by prefixing the variable with `cmd:`.
+The standard output of the command will be used as a value.
+
+```bash
+export ATLASSIAN_API_KEY="cmd:pass Web/atlassian/api-key"
+domcp -e "ATLASSIAN_*" -- uvx atlassian-mcp-server
+```
+
 Preview without building:
 
 ```bash

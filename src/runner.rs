@@ -34,7 +34,7 @@ pub async fn run(args: Args) -> Result<()> {
     };
 
     // 3. Resolve environment variables to pass into the container
-    let envs: Vec<String> = collect_exposed_host_env(&args.expose_env)
+    let envs: Vec<String> = collect_exposed_host_env(&args.expose_env)?
         .into_iter()
         .map(|(k, v)| format!("{k}={v}"))
         .collect();
@@ -280,18 +280,50 @@ async fn await_task(label: &str, task: JoinHandle<()>) {
     }
 }
 
-fn collect_exposed_host_env(patterns: &[String]) -> Vec<(String, String)> {
+fn collect_exposed_host_env(patterns: &[String]) -> anyhow::Result<Vec<(String, String)>> {
     if patterns.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
-    std::env::vars()
-        .filter(|(key, _)| {
-            patterns
-                .iter()
-                .any(|pattern| env_pattern_matches(pattern, key))
-        })
-        .collect()
+    let mut envs = Vec::new();
+    for (key, val) in std::env::vars() {
+        if patterns.iter().any(|pattern| env_pattern_matches(pattern, &key)) {
+            if let Some(cmd) = val.strip_prefix("cmd:") {
+                let evaluated = evaluate_cmd_env(&key, cmd)?;
+                envs.push((key, evaluated));
+            } else {
+                envs.push((key, val));
+            }
+        }
+    }
+    Ok(envs)
+}
+
+fn evaluate_cmd_env(key: &str, cmd: &str) -> anyhow::Result<String> {
+    let args = shlex::split(cmd).ok_or_else(|| {
+        anyhow::anyhow!("Failed to parse command for env {}: {}", key, cmd)
+    })?;
+    
+    if args.is_empty() {
+        anyhow::bail!("Empty command for env {}", key);
+    }
+    
+    let output = std::process::Command::new(&args[0])
+        .args(&args[1..])
+        .output()?;
+        
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        anyhow::bail!(
+            "Command for env {} failed with status {}: {}",
+            key,
+            output.status,
+            stderr.trim()
+        );
+    }
+    
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(stdout.trim_end_matches(&['\r', '\n']).to_string())
 }
 
 fn env_pattern_matches(pattern: &str, key: &str) -> bool {
@@ -441,7 +473,7 @@ mod tests {
         }
 
         let patterns = vec!["DOMCP_TEST_ENV_*".to_string(), key.to_string()];
-        let collected = collect_exposed_host_env(&patterns);
+        let collected = collect_exposed_host_env(&patterns).unwrap();
 
         unsafe {
             std::env::remove_var(key);
@@ -453,8 +485,27 @@ mod tests {
     }
 
     #[test]
+    fn collect_exposed_host_env_executes_cmd() {
+        let key = "DOMCP_TEST_CMD_ENV_VAR";
+        let val = "cmd:echo -n hello world";
+        let patterns = vec![key.to_string()];
+        unsafe {
+            std::env::set_var(key, val);
+        }
+
+        let collected = collect_exposed_host_env(&patterns).unwrap();
+
+        unsafe {
+            std::env::remove_var(key);
+        }
+
+        assert_eq!(collected.len(), 1);
+        assert_eq!(collected[0], (key.to_string(), "hello world".to_string()));
+    }
+
+    #[test]
     fn collect_exposed_host_env_empty_without_patterns() {
-        assert!(collect_exposed_host_env(&[]).is_empty());
+        assert!(collect_exposed_host_env(&[]).unwrap().is_empty());
     }
 
     #[cfg(not(windows))]
