@@ -88,28 +88,27 @@ impl Engine {
 
         info!("Building container image `{}`...", tag);
 
-        let tmp = tempfile::Builder::new()
-            .prefix("domcp-")
-            .suffix(".Dockerfile")
-            .tempfile()
-            .context("Failed to create temp Dockerfile")?;
-
-        std::fs::write(tmp.path(), dockerfile_content).context("Failed to write Dockerfile")?;
-
-        debug!("Dockerfile at: {}", tmp.path().display());
-
         let mut cmd = StdCommand::new(&self.path);
         cmd.arg("build")
-            .arg("-f")
-            .arg(tmp.path())
             .arg("-t")
             .arg(&tag)
-            .arg(".")
-            .stdin(Stdio::null())
+            .arg("-")
+            .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let output = cmd.output().context("Failed to run container build")?;
+        let mut child = cmd.spawn().context("Failed to spawn container build")?;
+
+        if let Some(mut stdin) = child.stdin.take() {
+            use std::io::Write;
+            stdin
+                .write_all(dockerfile_content.as_bytes())
+                .context("Failed to write Dockerfile to stdin")?;
+        }
+
+        let output = child
+            .wait_with_output()
+            .context("Failed to wait for container build")?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
