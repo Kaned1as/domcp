@@ -29,6 +29,13 @@ const DEFAULT_HTTP_PORT: u16 = 8080;
 /// 4. Environment variable with a port hint (e.g. `FASTMCP_PORT`, `PORT`) → HTTP
 /// 5. Everything else → Stdio
 pub fn detect(command: &[String], envs: &[String]) -> Transport {
+    // Special case: mcp-remote translates remote HTTP/SSE to local Stdio.
+    // It accepts transport and port flags for its upstream connection, not for its local mode.
+    if is_mcp_remote(command) {
+        debug!("Detected mcp-remote, forcing Stdio transport");
+        return Transport::Stdio;
+    }
+
     // --- pass 1: scan flags for explicit transport declaration ------------------
     if let Some(t) = scan_transport_flag(command) {
         let port = scan_port_flag(command).unwrap_or(DEFAULT_HTTP_PORT);
@@ -73,6 +80,16 @@ pub fn detect(command: &[String], envs: &[String]) -> Transport {
 // ---------------------------------------------------------------------------
 // Argument scanners
 // ---------------------------------------------------------------------------
+
+/// Check if the command is invoking the `mcp-remote` bridge.
+fn is_mcp_remote(command: &[String]) -> bool {
+    command
+        .iter()
+        .skip(1)
+        .find(|a| !a.starts_with('-'))
+        .map(|s| s.ends_with("mcp-remote"))
+        .unwrap_or(false)
+}
 
 /// Look for `--transport <value>` where value indicates HTTP.
 fn scan_transport_flag(command: &[String]) -> Option<String> {
@@ -300,6 +317,22 @@ mod tests {
             "8080:8080".into(),
         ];
         // Contains a colon → not a simple port, ignored by scan_port_flag
+        assert_eq!(detect(&cmd, &[]), Transport::Stdio);
+    }
+
+    #[test]
+    fn test_detect_mcp_remote_forces_stdio() {
+        let cmd = vec![
+            "npx".into(),
+            "-y".into(),
+            "mcp-remote".into(),
+            "https://hyperdx.xxxxx.com/api/mcp".into(),
+            "--transport".into(),
+            "sse".into(),
+            "--port".into(),
+            "8080".into(),
+        ];
+        // Despite transport and port flags, mcp-remote should force Stdio
         assert_eq!(detect(&cmd, &[]), Transport::Stdio);
     }
 }
