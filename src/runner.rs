@@ -97,10 +97,14 @@ pub async fn run(args: Args) -> Result<()> {
     }
 
     // 7. Build container image
+    let expected_state = crate::container::ExpectedState {
+        entrypoint: crate::entrypoint::build_parts(runner, &args.command),
+        packages: crate::packages::canonicalize(&args.packages),
+    };
     let image_tag = engine.build_image(
         &dockerfile_content,
         &args.command,
-        &args.packages,
+        &expected_state,
         args.rebuild,
     )?;
 

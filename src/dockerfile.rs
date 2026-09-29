@@ -77,7 +77,7 @@ pub fn generate(
     let base = runner.base_image();
     let runner_install = runner.install_commands();
     let common_install = runner.common_install_commands();
-    let entrypoint = build_entrypoint(runner, command);
+    let entrypoint = crate::entrypoint::build(runner, command);
 
     // Try to identify the package name to pre-install it into the image.
     // This makes container startup faster on subsequent runs.
@@ -158,31 +158,6 @@ fn build_preinstall(runner: Runner, command: &[String]) -> String {
     }
 }
 
-/// Build the ENTRYPOINT instruction for the Dockerfile.
-fn build_entrypoint(runner: Runner, command: &[String]) -> String {
-    // For npx with pre-installed global packages, we still use npx as the
-    // entrypoint since it handles PATH resolution correctly.
-    let parts: Vec<String> = match runner {
-        Runner::Uvx => {
-            // uvx runs as: uvx <package> [args...]
-            command.to_vec()
-        }
-        Runner::Pipx => {
-            // pipx run <package> [args...]
-            let mut v = vec!["pipx".to_string(), "run".to_string()];
-            v.extend(command.iter().skip(1).cloned());
-            v
-        }
-        Runner::Npx => {
-            // npx [flags] <package> [args...]
-            command.to_vec()
-        }
-    };
-
-    let json_parts: Vec<String> = parts.iter().map(|p| format!("\"{}\"", p)).collect();
-    format!("ENTRYPOINT [{}]", json_parts.join(", "))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,7 +178,7 @@ mod tests {
         assert!(df.contains("apk add --no-cache python3 uv"));
         assert!(df.contains("RUN apk add --no-cache coreutils"));
         assert!(df.contains("uv tool install mcp-server-fetch"));
-        assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-fetch\"]"));
+        assert!(df.contains("ENTRYPOINT [\"uvx\",\"mcp-server-fetch\"]"));
         assert!(df.contains(&format!(
             "LABEL org.opencontainers.image.version=\"{}\"",
             env!("CARGO_PKG_VERSION")
@@ -226,7 +201,7 @@ mod tests {
         assert!(df.contains("RUN apk add --no-cache coreutils"));
         assert!(!df.contains("RUN apk add --no-cache python3"));
         assert!(df.contains("npm install -g @modelcontextprotocol/server-filesystem"));
-        assert!(df.contains("ENTRYPOINT [\"npx\", \"-y\", \"@modelcontextprotocol/server-filesystem\", \"/home/user/project\"]"));
+        assert!(df.contains("ENTRYPOINT [\"npx\",\"-y\",\"@modelcontextprotocol/server-filesystem\",\"/home/user/project\"]"));
         assert!(df.contains(&format!(
             "LABEL org.opencontainers.image.version=\"{}\"",
             env!("CARGO_PKG_VERSION")
@@ -240,7 +215,7 @@ mod tests {
         let df = generate(Runner::Uvx, &cmd, Some(8080), &[]).unwrap();
         assert!(df.contains("EXPOSE 8080"));
         assert!(df.contains("RUN apk add --no-cache python3"));
-        assert!(df.contains("ENTRYPOINT [\"uvx\", \"mcp-server-sse\"]"));
+        assert!(df.contains("ENTRYPOINT [\"uvx\",\"mcp-server-sse\"]"));
     }
 
     #[test]

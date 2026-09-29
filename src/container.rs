@@ -59,33 +59,29 @@ impl Engine {
         &self,
         dockerfile_content: &str,
         command: &[String],
-        packages: &[String],
+        expected_state: &ExpectedState,
         force_rebuild: bool,
     ) -> Result<String> {
         let tag = image_tag(command);
-        let requested_packages = packages::canonicalize(packages);
 
         if !force_rebuild {
-            match self.image_package_state(&tag)? {
-                ImagePackageState::NotFound => {}
-                ImagePackageState::Present(existing) if existing == requested_packages => {
-                    info!("Image `{}` already exists, skipping build", tag);
+            match self.image_state(&tag)? {
+                ImageState::NotFound => {}
+                ImageState::Present { packages: existing_pkgs, entrypoint: existing_ep }
+                    if existing_pkgs == expected_state.packages && existing_ep == expected_state.entrypoint =>
+                {
+                    info!("Image `{}` already exists with matching packages and command, skipping build", tag);
                     return Ok(tag);
                 }
-                ImagePackageState::Missing if requested_packages.is_empty() => {
-                    info!("Image `{}` already exists, skipping build", tag);
-                    return Ok(tag);
-                }
-                ImagePackageState::Present(existing) => {
-                    info!("Image `{}` package list changed; rebuilding", tag);
+                ImageState::Present { packages: existing_pkgs, entrypoint: existing_ep } => {
+                    info!("Image `{}` parameters changed; rebuilding", tag);
                     debug!(
-                        "Existing packages: {:?}, requested: {:?}",
-                        existing, requested_packages
+                        "Existing packages: {:?}, expected: {:?}\nExisting entrypoint: {:?}, expected: {:?}",
+                        existing_pkgs, expected_state.packages, existing_ep, expected_state.entrypoint
                     );
                 }
-                ImagePackageState::Missing => {
-                    info!("Image `{}` missing package metadata; rebuilding", tag);
-                    debug!("Requested packages: {:?}", requested_packages);
+                ImageState::MissingMetadata => {
+                    info!("Image `{}` missing metadata; rebuilding", tag);
                 }
             }
         }
@@ -124,7 +120,7 @@ impl Engine {
         Ok(tag)
     }
 
-    fn image_package_state(&self, tag: &str) -> Result<ImagePackageState> {
+    fn image_state(&self, tag: &str) -> Result<ImageState> {
         let output = StdCommand::new(&self.path)
             .args(["image", "inspect", tag])
             .stdin(Stdio::null())
@@ -134,7 +130,7 @@ impl Engine {
             .with_context(|| format!("Failed to inspect image `{tag}`"))?;
 
         if !output.status.success() {
-            return Ok(ImagePackageState::NotFound);
+            return Ok(ImageState::NotFound);
         }
 
         let records: Vec<InspectRecord> = serde_json::from_slice(&output.stdout)
@@ -142,21 +138,29 @@ impl Engine {
 
         let record = match records.into_iter().next() {
             Some(record) => record,
-            None => return Ok(ImagePackageState::NotFound),
+            None => return Ok(ImageState::NotFound),
         };
 
-        match record.config.labels {
+        let packages = match record.config.labels {
             Some(labels) => match labels.get(packages::PACKAGES_LABEL_KEY) {
-                Some(value) => match packages::parse_label_value(value) {
-                    Some(parsed) => Ok(ImagePackageState::Present(parsed)),
-                    None => {
-                        debug!("Image `{}` has invalid package metadata: {}", tag, value);
-                        Ok(ImagePackageState::Missing)
-                    }
-                },
-                None => Ok(ImagePackageState::Missing),
+                Some(value) => packages::parse_label_value(value),
+                None => None,
             },
-            None => Ok(ImagePackageState::Missing),
+            None => None,
+        };
+
+        let entrypoint = record.config.entrypoint;
+
+        match (packages, entrypoint) {
+            (Some(pkgs), Some(ep)) => Ok(ImageState::Present {
+                packages: pkgs,
+                entrypoint: ep,
+            }),
+            // Treat missing metadata as missing entirely to trigger rebuild
+            _ => {
+                debug!("Image `{}` has invalid or missing package/entrypoint metadata", tag);
+                Ok(ImageState::MissingMetadata)
+            }
         }
     }
 
@@ -301,10 +305,19 @@ impl Engine {
 }
 
 #[derive(Debug)]
-enum ImagePackageState {
+pub struct ExpectedState {
+    pub packages: Vec<String>,
+    pub entrypoint: Vec<String>,
+}
+
+#[derive(Debug)]
+pub enum ImageState {
     NotFound,
-    Missing,
-    Present(Vec<String>),
+    MissingMetadata,
+    Present {
+        packages: Vec<String>,
+        entrypoint: Vec<String>,
+    },
 }
 
 #[derive(Debug, Deserialize)]
@@ -317,6 +330,8 @@ struct InspectRecord {
 struct InspectConfig {
     #[serde(rename = "Labels")]
     labels: Option<HashMap<String, String>>,
+    #[serde(rename = "Entrypoint")]
+    entrypoint: Option<Vec<String>>,
 }
 
 /// Bind mount specification between host and container paths.
