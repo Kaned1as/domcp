@@ -342,12 +342,22 @@ fn env_pattern_matches(pattern: &str, key: &str) -> bool {
 /// specifications.
 ///
 /// `mounts` contains the host paths requested through CLI flags such as
-/// `--extra-mount`. Each path is canonicalized when possible and translated to a
-/// container destination path via [`prepare_bind_mount`].
+/// `--extra-mount`. Each path is canonicalized when possible. Paths inside the
+/// user's home directory are mapped under `/opt/home` so they match `ENV HOME=/opt/home`
+/// inside the container; other paths use [`map_container_path`].
 fn prepare_extra_mounts(mounts: &[std::path::PathBuf]) -> Vec<BindMount> {
+    let home = dirs::home_dir();
+
     mounts
         .iter()
-        .map(|mount| prepare_bind_mount(mount))
+        .map(|mount| {
+            let host = mount.canonicalize().unwrap_or_else(|_| mount.to_path_buf());
+            let container = match home.as_ref().and_then(|h| host.strip_prefix(h).ok()) {
+                Some(relative) => join_container_path("/opt/home", relative),
+                None => map_container_path(&host),
+            };
+            BindMount { host, container }
+        })
         .collect()
 }
 
@@ -438,7 +448,6 @@ fn map_container_path(host: &std::path::Path) -> String {
 /// `relative` is the path segment relative to that prefix on the host side.
 /// Only normal path components are appended, producing a slash-separated path
 /// that is valid inside Linux containers.
-#[cfg(windows)]
 fn join_container_path(base: &str, relative: &std::path::Path) -> String {
     use std::path::Component;
 
@@ -514,7 +523,7 @@ mod tests {
 
     #[cfg(not(windows))]
     #[test]
-    fn prepare_extra_mounts_preserve_unix_paths() {
+    fn prepare_extra_mounts_rewrites_home_relative_paths() {
         let home = dirs::home_dir().expect("home directory unavailable");
         let mount = home.join(".ssh");
         let mounts = vec![mount.clone()];
@@ -523,10 +532,7 @@ mod tests {
 
         assert_eq!(prepared.len(), 1);
         assert_eq!(prepared[0].host, mount);
-        assert_eq!(
-            prepared[0].container,
-            prepared[0].host.display().to_string()
-        );
+        assert_eq!(prepared[0].container, "/opt/home/.ssh");
     }
 
     #[cfg(not(windows))]
