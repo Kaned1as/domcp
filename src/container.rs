@@ -210,6 +210,7 @@ impl Engine {
                 // the container sees themselves as their host UID with proper
                 // file ownership on mounted volumes.
                 cmd.args(["--userns=keep-id"]);
+                cmd.args(["--passwd-entry='$USERNAME:*:$UID:$GID:domcp user:/opt/home:/bin/sh'"]);
             } else {
                 // Docker: explicitly set UID:GID
                 let uid = nix::unistd::getuid();
